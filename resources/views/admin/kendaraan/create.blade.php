@@ -39,22 +39,18 @@
                     </div>
                 </div>
 
-                {{-- Pilih driver dari akun terdaftar --}}
+                {{-- Nama driver: ketik bebas, dengan saran dari akun driver terdaftar --}}
                 <div class="col-md-6">
                     <label class="form-label">Driver</label>
-                    <select id="selectDriver" name="driver_user_id" class="form-select">
-                        <option value="">-- Tidak Ada Driver --</option>
+                    <input type="text" name="nama_driver" class="form-control" list="daftarDriver"
+                           value="{{ old('nama_driver') }}" maxlength="100" autocomplete="off"
+                           placeholder="Ketik nama driver">
+                    <datalist id="daftarDriver">
                         @foreach($drivers as $d)
-                            <option value="{{ $d->id_user }}"
-                                    data-nama="{{ $d->nama }}"
-                                    {{ old('driver_user_id') == $d->id_user ? 'selected' : '' }}>
-                                {{ $d->nama }}
-                            </option>
+                            <option value="{{ $d->nama }}"></option>
                         @endforeach
-                    </select>
-                    @if($drivers->isEmpty())
-                        <small class="text-muted">Belum ada akun dengan role driver.</small>
-                    @endif
+                    </datalist>
+                    <div class="form-text">Jika nama sama dengan akun driver, kendaraan otomatis terhubung ke akun tersebut.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">No HP Driver</label>

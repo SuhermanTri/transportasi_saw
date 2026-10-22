@@ -45,6 +45,63 @@
         </div>
         @endif
 
+        {{-- ── Priority + Konflik (Fitur 3) ─────────────────────────────── --}}
+        <div class="card mb-3">
+            <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-flag me-2"></i>Prioritas Booking</h6>
+                <div>{!! $permintaan->priorityLabel !!}</div>
+            </div>
+            <div class="card-body py-3">
+                <form method="POST" action="{{ route('admin.permintaan.priority', $permintaan->id_permintaan) }}"
+                      class="d-flex gap-2 align-items-end">
+                    @csrf
+                    <div class="flex-grow-1">
+                        <label class="form-label small mb-1 text-muted">Ubah Prioritas</label>
+                        <select name="priority" class="form-select form-select-sm">
+                            <option value="normal"  {{ ($permintaan->priority ?? 'normal') === 'normal'  ? 'selected' : '' }}>Normal</option>
+                            <option value="high"    {{ ($permintaan->priority ?? 'normal') === 'high'   ? 'selected' : '' }}>High — Prioritas Tinggi</option>
+                            <option value="urgent"  {{ ($permintaan->priority ?? 'normal') === 'urgent' ? 'selected' : '' }}>Urgent — Mendesak</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary btn-sm"><i class="bi bi-save me-1"></i>Simpan</button>
+                </form>
+
+                {{-- Konflik booking (Fitur 3: override) --}}
+                @if($konflikBooking->count() > 0)
+                <div class="alert alert-danger mt-3 mb-0">
+                    <div class="fw-semibold mb-2">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        {{ $konflikBooking->count() }} booking prioritas lebih rendah terjadwal di tanggal yang sama:
+                    </div>
+                    @foreach($konflikBooking as $kb)
+                    <div class="d-flex justify-content-between align-items-center bg-white rounded p-2 mb-2">
+                        <div>
+                            <div class="fw-semibold small">{{ $kb->user->nama ?? '-' }} → {{ $kb->tujuan }}</div>
+                            <div class="text-muted small">
+                                {{ $kb->tanggal_berangkat->format('d M Y') }} {{ $kb->jam_berangkat }}
+                                {!! $kb->priorityLabel !!}
+                                @if($kb->jadwal?->kendaraan)
+                                    • Kendaraan: {{ $kb->jadwal->kendaraan->nama_kendaraan }}
+                                @endif
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1 flex-shrink-0">
+                            <a href="{{ route('admin.permintaan.show', $kb->id_permintaan) }}"
+                               class="btn btn-outline-secondary btn-sm" title="Lihat">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a href="{{ route('admin.penjadwalan.edit', $kb->jadwal->id_jadwal) }}"
+                               class="btn btn-outline-warning btn-sm" title="Reschedule">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </a>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+                @endif
+            </div>
+        </div>
+
         {{-- ── Detail Permintaan ───────────────────────────────────────── --}}
         <div class="card">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
@@ -176,7 +233,10 @@
                             <div class="mb-2">
                                 <label class="form-label fw-semibold">Tanggal Baru</label>
                                 <input type="date" name="tanggal_berangkat" class="form-control"
-                                       value="{{ $permintaan->tanggal_berangkat->format('Y-m-d') }}" required>
+                                       value="{{ $tanggalSaran ?? $permintaan->tanggal_berangkat->format('Y-m-d') }}" required>
+                                @if($tanggalSaran)
+                                <div class="form-text">Tanggal terdekat dengan kendaraan tersedia pada jam yang sama: {{ \Carbon\Carbon::parse($tanggalSaran)->format('d M Y') }}</div>
+                                @endif
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Keterangan untuk Pemohon <span class="text-muted fw-normal small">(opsional)</span></label>
@@ -209,8 +269,65 @@
                     <i class="bi bi-calendar-plus me-1"></i>Buat Jadwal
                 </a>
                 @endif
+
+                {{-- Info pembatalan oleh user --}}
+                @if($permintaan->status === 'dibatalkan_user' && $permintaan->alasan_batal)
+                <hr>
+                <div class="alert alert-danger mb-0">
+                    <h6 class="fw-semibold"><i class="bi bi-slash-circle me-2"></i>Dibatalkan oleh Pemohon</h6>
+                    <div><strong>Alasan:</strong> {{ $permintaan->alasan_batal }}</div>
+                    @if($permintaan->dibatalkan_pada)
+                    <div class="text-muted small mt-1">
+                        Pada {{ $permintaan->dibatalkan_pada->format('d M Y, H:i') }}
+                    </div>
+                    @endif
+                </div>
+                @endif
             </div>
         </div>
+
+        {{-- ── Audit Trail (Fitur 4) ───────────────────────────────────── --}}
+        @if($permintaan->logs && $permintaan->logs->count() > 0)
+        <div class="card mt-3">
+            <div class="card-header bg-white py-2">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-clock-history me-2"></i>Riwayat Aktivitas</h6>
+            </div>
+            <div class="card-body">
+                @foreach($permintaan->logs as $log)
+                @php $meta = \App\Models\PermintaanLog::$tipeMeta[$log->tipe_log] ?? ['color' => 'secondary', 'icon' => 'bi-info-circle', 'label' => $log->tipe_log]; @endphp
+                <div class="d-flex gap-3 {{ !$loop->last ? 'mb-3 pb-3 border-bottom' : '' }}">
+                    <div class="flex-shrink-0">
+                        <span class="badge bg-{{ $meta['color'] }} rounded-circle p-2">
+                            <i class="bi {{ $meta['icon'] }}"></i>
+                        </span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold small">{{ $meta['label'] }}</div>
+                        @if($log->keterangan)
+                            <div class="text-muted small">{{ $log->keterangan }}</div>
+                        @endif
+                        @if($log->data_lama && in_array($log->tipe_log, ['reschedule_user','reschedule_admin']))
+                            <div class="small text-muted mt-1">
+                                Dari: <code>{{ $log->data_lama['tanggal_berangkat'] ?? '-' }}</code>
+                                → <code>{{ $log->data_baru['tanggal_berangkat'] ?? '-' }}</code>
+                            </div>
+                        @endif
+                        @if($log->tipe_log === 'prioritas_diubah' && $log->data_lama)
+                            <div class="small text-muted mt-1">
+                                Dari: <code>{{ $log->data_lama['priority'] ?? '-' }}</code>
+                                → <code>{{ $log->data_baru['priority'] ?? '-' }}</code>
+                            </div>
+                        @endif
+                        <div class="text-muted" style="font-size:.75rem">
+                            {{ $log->actor?->nama ?? 'Sistem' }} •
+                            {{ $log->created_at->format('d M Y, H:i') }}
+                        </div>
+                    </div>
+                </div>
+                @endforeach
+            </div>
+        </div>
+        @endif
 
     </div>
 </div>

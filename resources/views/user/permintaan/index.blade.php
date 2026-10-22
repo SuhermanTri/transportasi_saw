@@ -69,6 +69,18 @@
                                     <button class="btn btn-danger btn-sm" onclick="return confirm('Batalkan permintaan ini?')"><i class="bi bi-x-circle"></i></button>
                                 </form>
                             @endif
+                            @if(in_array($p->status, ['disetujui', 'terjadwal']))
+                                <a href="{{ route('user.permintaan.reschedule', $p->id_permintaan) }}"
+                                   class="btn btn-warning btn-sm" title="Reschedule">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </a>
+                            @endif
+                            @if($p->status === 'terjadwal')
+                                <a href="{{ route('user.permintaan.cancel', $p->id_permintaan) }}"
+                                   class="btn btn-outline-danger btn-sm" title="Batalkan">
+                                    <i class="bi bi-slash-circle"></i>
+                                </a>
+                            @endif
                         </td>
                     </tr>
                     @empty

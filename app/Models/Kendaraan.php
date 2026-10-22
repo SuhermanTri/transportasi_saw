@@ -52,11 +52,6 @@ class Kendaraan extends Model
         return $this->hasMany(Jadwal::class, 'id_kendaraan', 'id_kendaraan');
     }
 
-    public function penjadwalan()
-    {
-        return $this->hasMany(Jadwal::class, 'id_kendaraan', 'id_kendaraan');
-    }
-
     /** Apakah kendaraan sesuai aturan gage untuk tanggal tertentu? */
     public function isSesuaiGage(\DateTimeInterface|string $tanggal): bool
     {

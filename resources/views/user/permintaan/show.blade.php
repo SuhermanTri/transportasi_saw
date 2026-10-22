@@ -162,6 +162,75 @@
         </div>
         @endif
 
+        {{-- ── Tombol Cancel & Reschedule ──────────────────────────────── --}}
+        @if($permintaan->status === 'terjadwal')
+        <hr>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('user.permintaan.reschedule', $permintaan->id_permintaan) }}"
+               class="btn btn-warning">
+                <i class="bi bi-arrow-repeat me-1"></i>Reschedule
+            </a>
+            <a href="{{ route('user.permintaan.cancel', $permintaan->id_permintaan) }}"
+               class="btn btn-outline-danger">
+                <i class="bi bi-slash-circle me-1"></i>Batalkan Booking
+            </a>
+        </div>
+        @elseif($permintaan->status === 'disetujui')
+        <hr>
+        <a href="{{ route('user.permintaan.reschedule', $permintaan->id_permintaan) }}"
+           class="btn btn-warning">
+            <i class="bi bi-arrow-repeat me-1"></i>Reschedule
+        </a>
+        @endif
+
+        {{-- ── Riwayat Pembatalan ───────────────────────────────────────── --}}
+        @if($permintaan->status === 'dibatalkan_user' && $permintaan->alasan_batal)
+        <hr>
+        <div class="alert alert-danger mb-0">
+            <h6 class="fw-semibold"><i class="bi bi-slash-circle me-2"></i>Booking Dibatalkan</h6>
+            <div><strong>Alasan:</strong> {{ $permintaan->alasan_batal }}</div>
+            @if($permintaan->dibatalkan_pada)
+            <div class="text-muted small mt-1">
+                Dibatalkan pada {{ $permintaan->dibatalkan_pada->format('d M Y, H:i') }}
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- ── Audit Trail / Riwayat Perubahan ────────────────────────── --}}
+        @if($permintaan->logs && $permintaan->logs->count() > 0)
+        <hr>
+        <h6 class="fw-semibold mb-3"><i class="bi bi-clock-history me-2"></i>Riwayat Aktivitas</h6>
+        <div class="timeline">
+            @foreach($permintaan->logs as $log)
+            @php $meta = \App\Models\PermintaanLog::$tipeMeta[$log->tipe_log] ?? ['color' => 'secondary', 'icon' => 'bi-info-circle', 'label' => $log->tipe_log]; @endphp
+            <div class="d-flex gap-3 mb-3">
+                <div class="flex-shrink-0">
+                    <span class="badge bg-{{ $meta['color'] }} rounded-circle p-2">
+                        <i class="bi {{ $meta['icon'] }}"></i>
+                    </span>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold small">{{ $meta['label'] }}</div>
+                    @if($log->keterangan)
+                    <div class="text-muted small">{{ $log->keterangan }}</div>
+                    @endif
+                    <div class="text-muted" style="font-size:.75rem">
+                        {{ $log->actor?->nama ?? 'Sistem' }} •
+                        {{ $log->created_at->format('d M Y, H:i') }}
+                    </div>
+                    @if($log->data_lama && $log->tipe_log === 'reschedule_user')
+                    <div class="mt-1 small text-muted">
+                        Dari: <strong>{{ $log->data_lama['tanggal_berangkat'] ?? '-' }}</strong>
+                        → <strong>{{ $log->data_baru['tanggal_berangkat'] ?? '-' }}</strong>
+                    </div>
+                    @endif
+                </div>
+            </div>
+            @endforeach
+        </div>
+        @endif
+
     </div>
 </div>
 </div></div>

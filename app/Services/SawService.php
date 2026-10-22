@@ -13,13 +13,17 @@ class SawService
     public function __construct(private GageService $gage) {}
 
     /**
-     * Hitung SAW untuk semua permintaan berstatus 'menunggu' atau 'disetujui'.
+     * Hitung SAW untuk semua permintaan aktif:
+     * 'menunggu', 'disetujui', 'menunggu_konfirmasi' (antrean penjadwalan),
+     * serta 'terjadwal' dan 'berjalan' agar skornya tetap tampil setelah dijadwalkan.
      * Tiga kriteria: Jabatan, Urgensi, Gage Kendaraan (semua benefit).
+     * Nilai akhir sama → urutan pengajuan (id_permintaan) sebagai pemecah.
      */
     public function hitung(): array
     {
         $permintaanList = Permintaan::with(['user', 'urgensi'])
-            ->whereIn('status', ['menunggu', 'disetujui'])
+            ->whereIn('status', ['menunggu', 'disetujui', 'menunggu_konfirmasi', 'terjadwal', 'berjalan'])
+            ->orderBy('id_permintaan')
             ->get();
 
         if ($permintaanList->isEmpty()) {
@@ -47,7 +51,11 @@ class SawService
             $skorJabatan = round($bobotJabatan * $normJabatan, 4);
             $skorUrgensi = round($bobotUrgensi * $normUrgensi, 4);
             $skorGage    = round($bobotGage    * $nilaiGage,   4);
-            $nilaiAkhir  = round($skorJabatan + $skorUrgensi + $skorGage, 4);
+            // Jumlahkan dari nilai utuh agar pembulatan per komponen tidak menggeser ranking
+            $nilaiAkhir  = round(
+                $bobotJabatan * $normJabatan + $bobotUrgensi * $normUrgensi + $bobotGage * $nilaiGage,
+                4
+            );
 
             $scores[$p->id_permintaan] = compact(
                 'skorJabatan', 'skorUrgensi', 'skorGage', 'nilaiAkhir'

@@ -74,7 +74,7 @@ class JadwalController extends Controller
     {
         $kid = $this->getKendaraanId();
 
-        $jadwal = Jadwal::with('permintaan')
+        $jadwal = Jadwal::with('permintaan.user')
             ->where('id_kendaraan', $kid)
             ->findOrFail($id);
 
@@ -93,6 +93,18 @@ class JadwalController extends Controller
                 route('user.permintaan.show', $permintaan->id_permintaan)
             );
         }
+
+        // Notifikasi ke dispatcher — driver selesai mengantar
+        $driver      = Auth::user();
+        $namaDriver  = $driver->nama;
+        $tujuan      = $permintaan?->tujuan ?? '-';
+        $pemohon     = $permintaan?->user?->nama ?? '-';
+        $linkJadwal  = route('admin.penjadwalan.index');
+
+        Notifikasi::kirimKeDispatcher(
+            "Driver {$namaDriver} telah selesai mengantar {$pemohon} ke \"{$tujuan}\". Menunggu konfirmasi penumpang.",
+            $linkJadwal
+        );
 
         return redirect()->route('driver.jadwal.show', $id)
             ->with('success', 'Perjalanan ditandai selesai. Menunggu konfirmasi pemohon.');

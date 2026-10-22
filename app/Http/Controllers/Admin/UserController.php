@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Kendaraan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -68,13 +69,15 @@ class UserController extends Controller
             'password.confirmed'    => 'Konfirmasi password tidak cocok.',
         ]);
 
-        User::create([
+        $user = User::create([
             'nama'     => $request->nama,
             'username' => $request->username,
             'password' => Hash::make($request->password),
             'id_role'  => $request->id_role,
             'jabatan'  => $request->jabatan,
         ]);
+
+        $this->hubungkanKendaraanDriver($user);
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User berhasil ditambahkan.');
@@ -116,8 +119,30 @@ class UserController extends Controller
 
         $user->update($data);
 
+        $this->hubungkanKendaraanDriver($user);
+
         return redirect()->route('admin.users.index')
             ->with('success', 'User berhasil diperbarui.');
+    }
+
+    /**
+     * Akun driver → hubungkan ke kendaraan yang nama driver-nya sama
+     * tetapi belum terhubung ke akun, agar notifikasi tugas & jadwal
+     * driver berjalan sama seperti driver lain.
+     */
+    private function hubungkanKendaraanDriver(User $user): void
+    {
+        if ((int) $user->id_role !== 3) {
+            return;
+        }
+
+        Kendaraan::whereNull('driver_user_id')
+            ->where('nama_driver', $user->nama)
+            ->update(['driver_user_id' => $user->id_user]);
+
+        // Nama akun diganti → samakan nama driver di kendaraannya
+        Kendaraan::where('driver_user_id', $user->id_user)
+            ->update(['nama_driver' => $user->nama]);
     }
 
     public function destroy($id)

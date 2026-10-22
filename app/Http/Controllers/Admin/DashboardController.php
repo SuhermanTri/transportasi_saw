@@ -8,11 +8,17 @@ use App\Models\Jadwal;
 use App\Models\Kendaraan;
 use App\Models\Permintaan;
 use App\Models\User;
+use App\Services\SawService;
 
 class DashboardController extends Controller
 {
+    public function __construct(private SawService $saw) {}
+
     public function index()
     {
+        // Hitung ulang SAW agar urutan dashboard = urutan yang dipakai penjadwalan
+        try { $this->saw->hitung(); } catch (\Throwable) {}
+
         $data = [
             'totalPermintaan'    => Permintaan::count(),
             'permintaanPending'  => Permintaan::where('status', 'menunggu')->count(),
@@ -27,9 +33,16 @@ class DashboardController extends Controller
                 ->limit(5)
                 ->get(),
 
-            // Permintaan terbaru
+            // Permintaan masuk — diurutkan menurut hasil SAW:
+            // nilai preferensi tertinggi dulu, nilai sama → ranking SAW,
+            // permintaan tanpa nilai SAW (sudah diproses) di bawah, terbaru dulu.
             'permintaanTerbaru' => Permintaan::with('user', 'urgensi')
-                ->orderByDesc('created_at')
+                ->leftJoin('hasil_saw', 'hasil_saw.id_permintaan', '=', 'permintaan.id_permintaan')
+                ->select('permintaan.*')
+                ->orderByRaw('hasil_saw.nilai_akhir IS NULL')
+                ->orderByDesc('hasil_saw.nilai_akhir')
+                ->orderBy('hasil_saw.ranking')
+                ->orderByDesc('permintaan.created_at')
                 ->limit(5)
                 ->get(),
 

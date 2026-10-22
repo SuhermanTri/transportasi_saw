@@ -26,7 +26,7 @@ class KendaraanController extends Controller
         $request->validate([
             'nama_kendaraan'          => 'required|string|max:50',
             'no_polisi'               => 'required|string|max:15',
-            'driver_user_id'          => 'nullable|exists:users,id_user',
+            'nama_driver'             => 'nullable|string|max:100',
             'no_hp_driver'            => 'nullable|string|max:15',
             'kapasitas'               => 'required|integer|min:1',
             'status'                  => 'required|in:tersedia,dipakai',
@@ -36,15 +36,8 @@ class KendaraanController extends Controller
             'jam_selesai_operasional' => 'nullable|date_format:H:i',
         ]);
 
-        $data = $request->except(['nama_driver', 'tipe_gage']);
-
-        // Sinkronkan nama_driver dari akun user driver yang dipilih
-        if ($request->filled('driver_user_id')) {
-            $driverUser = User::find($request->driver_user_id);
-            $data['nama_driver'] = $driverUser?->nama;
-        } else {
-            $data['nama_driver'] = null;
-        }
+        $data = $request->except(['nama_driver', 'driver_user_id', 'tipe_gage']);
+        $data = array_merge($data, $this->dataDriver($request));
 
         Kendaraan::create($data);
 
@@ -64,7 +57,7 @@ class KendaraanController extends Controller
         $request->validate([
             'nama_kendaraan'          => 'required|string|max:50',
             'no_polisi'               => 'required|string|max:15',
-            'driver_user_id'          => 'nullable|exists:users,id_user',
+            'nama_driver'             => 'nullable|string|max:100',
             'no_hp_driver'            => 'nullable|string|max:15',
             'kapasitas'               => 'required|integer|min:1',
             'status'                  => 'required|in:tersedia,dipakai',
@@ -74,21 +67,34 @@ class KendaraanController extends Controller
             'jam_selesai_operasional' => 'nullable|date_format:H:i',
         ]);
 
-        $data = $request->except(['nama_driver', 'tipe_gage']);
-
-        // Sinkronkan nama_driver dari akun user driver yang dipilih
-        if ($request->filled('driver_user_id')) {
-            $driverUser = User::find($request->driver_user_id);
-            $data['nama_driver'] = $driverUser?->nama;
-        } else {
-            $data['nama_driver'] = null;
-        }
+        $data = $request->except(['nama_driver', 'driver_user_id', 'tipe_gage']);
+        $data = array_merge($data, $this->dataDriver($request));
 
         $kendaraan = Kendaraan::findOrFail($id);
         $kendaraan->update($data);
 
         return redirect()->route('admin.kendaraan.index')
             ->with('success', 'Kendaraan berhasil diperbarui.');
+    }
+
+    /**
+     * Nama driver diketik bebas. Jika cocok dengan akun ber-role driver,
+     * kendaraan otomatis dihubungkan ke akun tersebut (agar jadwal muncul
+     * di dashboard driver); jika tidak, nama disimpan apa adanya.
+     */
+    private function dataDriver(Request $request): array
+    {
+        $nama = trim((string) $request->input('nama_driver'));
+        if ($nama === '') {
+            return ['nama_driver' => null, 'driver_user_id' => null];
+        }
+
+        $driverUser = User::where('id_role', 3)->where('nama', $nama)->first();
+
+        return [
+            'nama_driver'    => $driverUser?->nama ?? $nama,
+            'driver_user_id' => $driverUser?->id_user,
+        ];
     }
 
     public function destroy($id)

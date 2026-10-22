@@ -8,6 +8,7 @@ use App\Models\Kendaraan;
 use App\Models\Notifikasi;
 use App\Models\Permintaan;
 use App\Services\GageService;
+use App\Services\SawService;
 use App\Services\VehicleScheduleService;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,7 @@ class PenjadwalanController extends Controller
     public function __construct(
         private GageService $gage,
         private VehicleScheduleService $schedule,
+        private SawService $saw,
     ) {}
 
     public function index()
@@ -26,7 +28,7 @@ class PenjadwalanController extends Controller
 
         $permintaanSiap = Permintaan::with(['user', 'urgensi', 'hasilSaw'])
             ->whereIn('status', ['disetujui', 'menunggu_konfirmasi'])
-            ->whereDoesntHave('jadwal')
+            ->whereDoesntHave('jadwal', fn($q) => $q->where('status', 'aktif'))
             ->orderByRaw('(SELECT nilai_akhir FROM hasil_saw WHERE hasil_saw.id_permintaan = permintaan.id_permintaan) DESC')
             ->get();
 
@@ -37,7 +39,7 @@ class PenjadwalanController extends Controller
     {
         $permintaan = Permintaan::with(['user', 'urgensi', 'hasilSaw'])
             ->whereIn('status', ['disetujui', 'menunggu_konfirmasi'])
-            ->whereDoesntHave('jadwal')
+            ->whereDoesntHave('jadwal', fn($q) => $q->where('status', 'aktif'))
             ->orderByRaw('(SELECT nilai_akhir FROM hasil_saw WHERE hasil_saw.id_permintaan = permintaan.id_permintaan) DESC')
             ->get();
 
@@ -60,7 +62,9 @@ class PenjadwalanController extends Controller
         $gageAktif = $this->gage->isGageAktif($jamMulai, $jamSelesai);
         $tipeGage  = $gageAktif ? $this->gage->tipeUntukTanggal($p->tanggal_berangkat) : null;
 
-        $kendaraan = $this->schedule->kendaraanTersedia($tanggal, $jamMulai, $jamSelesai, $tipeGage);
+        $kendaraan = $this->schedule->kendaraanTersedia(
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $p->tanggal_kembali?->format('Y-m-d')
+        );
 
         return response()->json([
             'gage_aktif'   => $gageAktif,
@@ -79,6 +83,12 @@ class PenjadwalanController extends Controller
         $permintaan = Permintaan::findOrFail($request->id_permintaan);
         $kendaraan  = Kendaraan::with('driverUser')->findOrFail($request->id_kendaraan);
 
+        // Cegah jadwal ganda (mis. permintaan sudah terjadwal otomatis lewat antrean prioritas)
+        if ($permintaan->jadwal()->where('status', 'aktif')->exists()) {
+            return back()->withInput()
+                ->with('error', 'Permintaan ini sudah memiliki jadwal aktif.');
+        }
+
         $tanggal    = $permintaan->tanggal_berangkat->format('Y-m-d');
         $jamMulai   = $permintaan->jam_berangkat  ?? '08:00';
         $jamSelesai = $permintaan->jam_kembali    ?? '17:00';
@@ -90,7 +100,10 @@ class PenjadwalanController extends Controller
         }
 
         // Validasi booking lock
-        if (! $this->schedule->tersedia($kendaraan->id_kendaraan, $tanggal, $jamMulai, $jamSelesai)) {
+        if (! $this->schedule->tersedia(
+            $kendaraan->id_kendaraan, $tanggal, $jamMulai, $jamSelesai,
+            null, $permintaan->tanggal_kembali?->format('Y-m-d')
+        )) {
             return back()->withInput()
                 ->with('error', 'Kendaraan sudah memiliki jadwal yang bentrok pada waktu tersebut. Pilih kendaraan lain.');
         }
@@ -168,6 +181,11 @@ class PenjadwalanController extends Controller
             }
 
             Permintaan::where('id_permintaan', $jadwal->id_permintaan)->update($updateData);
+
+            // Recalculate SAW ranking agar permintaan yang kembali ke antrian terurut ulang
+            if ($request->status === 'batal') {
+                try { $this->saw->hitung(); } catch (\Throwable) {}
+            }
         }
 
         return redirect()->route('admin.penjadwalan.index')
@@ -205,6 +223,9 @@ class PenjadwalanController extends Controller
         }
 
         $jadwal->delete();
+
+        // Recalculate SAW agar permintaan yang kembali ke antrian mendapat ranking baru
+        try { $this->saw->hitung(); } catch (\Throwable) {}
 
         return redirect()->route('admin.penjadwalan.index')
             ->with('success', 'Jadwal berhasil dihapus.');

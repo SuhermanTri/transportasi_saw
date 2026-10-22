@@ -51,6 +51,11 @@ class User extends Authenticatable
         return $this->hasMany(Notifikasi::class, 'user_id', 'id_user');
     }
 
+    public function penilaianSebagaiDriver()
+    {
+        return $this->hasMany(PenilaianDriver::class, 'driver_id', 'id_user');
+    }
+
     /* ── Role helpers ────────────────────────────────────────── */
     public function isAdmin(): bool  { return $this->id_role == 2; }
     public function isUser(): bool   { return $this->id_role == 1; }

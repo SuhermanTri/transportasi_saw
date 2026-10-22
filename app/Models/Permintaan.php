@@ -18,12 +18,15 @@ class Permintaan extends Model
         'jumlah_penumpang',  'keterangan',
         'status', 'created_at',
         'catatan_dispatcher', 'feedback_type',
+        // Fitur baru: cancel, priority, audit
+        'priority', 'alasan_batal', 'dibatalkan_pada',
     ];
 
     protected $casts = [
         'tanggal_berangkat' => 'date',
         'tanggal_kembali'   => 'date',
         'created_at'        => 'datetime',
+        'dibatalkan_pada'   => 'datetime',
     ];
 
     /* ── Dispatcher feedback helpers ─────────────────────────── */
@@ -39,6 +42,19 @@ class Permintaan extends Model
         return "<span class=\"badge bg-{$meta['color']}\"><i class=\"bi {$meta['icon']} me-1\"></i>{$meta['label']}</span>";
     }
 
+    /* ── Priority helpers ────────────────────────────────────── */
+    public static array $priorityMeta = [
+        'normal' => ['color' => 'secondary', 'icon' => 'bi-circle-fill',            'label' => 'Normal'],
+        'high'   => ['color' => 'warning',   'icon' => 'bi-arrow-up-circle-fill',   'label' => 'High'],
+        'urgent' => ['color' => 'danger',    'icon' => 'bi-exclamation-triangle-fill', 'label' => 'Urgent'],
+    ];
+
+    public function getPriorityLabelAttribute(): string
+    {
+        $m = self::$priorityMeta[$this->priority ?? 'normal'] ?? self::$priorityMeta['normal'];
+        return "<span class=\"badge bg-{$m['color']}\"><i class=\"bi {$m['icon']} me-1\"></i>{$m['label']}</span>";
+    }
+
     /* ── Status label helpers ─────────────────────────────────── */
     public static array $statusLabels = [
         'menunggu'             => ['badge' => 'bg-warning text-dark', 'icon' => 'bi-hourglass-split',  'text' => 'Menunggu'],
@@ -48,6 +64,7 @@ class Permintaan extends Model
         'berjalan'             => ['badge' => 'bg-primary',           'icon' => 'bi-car-front-fill',   'text' => 'Berjalan'],
         'selesai'              => ['badge' => 'bg-secondary',         'icon' => 'bi-flag-fill',        'text' => 'Selesai'],
         'ditolak'              => ['badge' => 'bg-danger',            'icon' => 'bi-x-circle-fill',    'text' => 'Ditolak'],
+        'dibatalkan_user'      => ['badge' => 'bg-danger',            'icon' => 'bi-slash-circle-fill','text' => 'Dibatalkan'],
     ];
 
     public function getStatusLabelAttribute(): string
@@ -75,5 +92,11 @@ class Permintaan extends Model
     public function hasilSaw()
     {
         return $this->hasOne(HasilSaw::class, 'id_permintaan', 'id_permintaan');
+    }
+
+    public function logs()
+    {
+        return $this->hasMany(PermintaanLog::class, 'id_permintaan', 'id_permintaan')
+                    ->orderByDesc('created_at');
     }
 }

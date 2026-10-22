@@ -13,22 +13,21 @@ class ResetStatusJadwal extends Command
 
     public function handle(): void
     {
-        $expired = Jadwal::where('status', 'aktif')
+        // Perjalanan multi-hari baru kadaluarsa setelah tanggal_kembali lewat
+        $expired = Jadwal::with('permintaan')
+            ->where('status', 'aktif')
             ->whereDate('tanggal', '<', today())
-            ->get();
+            ->get()
+            ->filter(fn($j) => ($j->permintaan?->tanggal_kembali ?? $j->tanggal)->lt(today()));
 
         foreach ($expired as $jadwal) {
             Kendaraan::where('id_kendaraan', $jadwal->id_kendaraan)
                 ->where('status', 'dipakai')
                 ->update(['status' => 'tersedia']);
 
-            $newPerjalanan = $jadwal->status_perjalanan === 'selesai_driver'
-                ? 'selesai_final'
-                : 'selesai_final';
-
             $jadwal->update([
                 'status'            => 'selesai',
-                'status_perjalanan' => $newPerjalanan,
+                'status_perjalanan' => 'selesai_final',
             ]);
 
             $jadwal->permintaan?->update(['status' => 'selesai']);

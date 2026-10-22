@@ -42,11 +42,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:dispatcher'])-
 
     // Permintaan
     Route::prefix('permintaan')->name('permintaan.')->group(function () {
-        Route::get('/',              [Admin\PermintaanController::class, 'index'])->name('index');
-        Route::get('/{id}',          [Admin\PermintaanController::class, 'show'])->name('show');
-        Route::post('/{id}/approve',    [Admin\PermintaanController::class, 'approve'])->name('approve');
-        Route::post('/{id}/reject',     [Admin\PermintaanController::class, 'reject'])->name('reject');
-        Route::post('/{id}/reschedule', [Admin\PermintaanController::class, 'reschedule'])->name('reschedule');
+        Route::get('/',                  [Admin\PermintaanController::class, 'index'])->name('index');
+        Route::get('/{id}',              [Admin\PermintaanController::class, 'show'])->name('show');
+        Route::post('/{id}/approve',     [Admin\PermintaanController::class, 'approve'])->name('approve');
+        Route::post('/{id}/reject',      [Admin\PermintaanController::class, 'reject'])->name('reject');
+        Route::post('/{id}/reschedule',  [Admin\PermintaanController::class, 'reschedule'])->name('reschedule');
+        // Fitur 3: ubah priority
+        Route::post('/{id}/priority',    [Admin\PermintaanController::class, 'updatePriority'])->name('priority');
     });
 
     // Kendaraan
@@ -109,6 +111,12 @@ Route::prefix('user')->name('user.')->middleware(['auth', 'role:user'])->group(f
         Route::get('/{id}/edit', [User\PermintaanController::class, 'edit'])->name('edit');
         Route::put('/{id}',      [User\PermintaanController::class, 'update'])->name('update');
         Route::delete('/{id}',   [User\PermintaanController::class, 'destroy'])->name('destroy');
+        // Fitur 1: cancel booking (terjadwal → dibatalkan_user)
+        Route::get('/{id}/cancel',          [User\PermintaanController::class, 'cancelForm'])->name('cancel');
+        Route::post('/{id}/cancel',         [User\PermintaanController::class, 'cancelStore'])->name('cancel.confirm');
+        // Fitur 2: reschedule booking (disetujui/terjadwal → tanggal baru)
+        Route::get('/{id}/reschedule',      [User\PermintaanController::class, 'rescheduleForm'])->name('reschedule');
+        Route::post('/{id}/reschedule',     [User\PermintaanController::class, 'rescheduleStore'])->name('reschedule.store');
     });
 
     // Penilaian driver

@@ -14,7 +14,6 @@ class DatabaseSeeder extends Seeder
             KendaraanSeeder::class,
             KriteriaSeeder::class,
             PerbandinganKriteriaSeeder::class,
-            AlternatifPenilaianSeeder::class,
             PermintaanSeeder::class,
         ]);
     }

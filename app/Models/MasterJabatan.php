@@ -18,7 +18,9 @@ class MasterJabatan extends Model
     {
         if (blank($jabatan)) return 1;
 
-        return static::where('nama_jabatan', 'LIKE', "%{$jabatan}%")
+        // Check if user's jabatan string contains any keyword stored in master_jabatan.
+        // e.g. user jabatan = "Manager SDM"  →  "Manager SDM" LIKE '%Manager%'  →  match, nilai 4
+        return static::whereRaw('? LIKE CONCAT(\'%\', nama_jabatan, \'%\')', [$jabatan])
             ->orderByDesc('nilai_saw')
             ->value('nilai_saw') ?? 1;
     }

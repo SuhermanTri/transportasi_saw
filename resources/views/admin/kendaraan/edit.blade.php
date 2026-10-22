@@ -40,27 +40,22 @@
                     </div>
                 </div>
 
-                {{-- Pilih driver dari akun terdaftar --}}
+                {{-- Nama driver: ketik bebas, dengan saran dari akun driver terdaftar --}}
                 <div class="col-md-6">
                     <label class="form-label">Driver</label>
-                    <select name="driver_user_id" class="form-select">
-                        <option value="">-- Tidak Ada Driver --</option>
+                    <input type="text" name="nama_driver" class="form-control" list="daftarDriver"
+                           value="{{ old('nama_driver', $kendaraan->nama_driver) }}" maxlength="100" autocomplete="off"
+                           placeholder="Ketik nama driver">
+                    <datalist id="daftarDriver">
                         @foreach($drivers as $d)
-                            @php
-                                $selected = old('driver_user_id', $kendaraan->driver_user_id) == $d->id_user;
-                            @endphp
-                            <option value="{{ $d->id_user }}" {{ $selected ? 'selected' : '' }}>
-                                {{ $d->nama }}
-                            </option>
+                            <option value="{{ $d->nama }}"></option>
                         @endforeach
-                    </select>
-                    @if($drivers->isEmpty())
-                        <small class="text-muted">Belum ada akun dengan role driver.</small>
-                    @endif
+                    </datalist>
+                    <div class="form-text">Jika nama sama dengan akun driver, kendaraan otomatis terhubung ke akun tersebut.</div>
                     @if($kendaraan->nama_driver && !$kendaraan->driver_user_id)
                         <small class="text-warning d-block mt-1">
                             <i class="bi bi-exclamation-triangle me-1"></i>
-                            Driver lama: "{{ $kendaraan->nama_driver }}" — pilih dari daftar agar jadwal muncul di dashboard driver.
+                            Driver "{{ $kendaraan->nama_driver }}" belum punya akun driver, jadi jadwal belum muncul di dashboard driver.
                         </small>
                     @endif
                 </div>
