@@ -7,7 +7,7 @@ use App\Models\PerbandinganKriteria;
 
 class AhpService
 {
-    // Random Index values (Saaty)
+    // Random Index values (Saaty), indeks 0 = n=1 ... indeks 9 = n=10
     private array $ri = [0, 0, 0.58, 0.90, 1.12, 1.24, 1.32, 1.41, 1.45, 1.49];
 
     public function hitung(): array
@@ -56,7 +56,8 @@ class AhpService
 
         // Consistency Index & Ratio
         $ci = ($lambdaMax - $n) / max($n - 1, 1);
-        $ri = $this->ri[$n] ?? 1;
+        // Tabel RI dimulai dari n=1 pada indeks 0 (n=3 → 0.58)
+        $ri = $this->ri[$n - 1] ?? 1.49;
         $cr = $ri > 0 ? $ci / $ri : 0;
 
         // Save weights to kriteria table
