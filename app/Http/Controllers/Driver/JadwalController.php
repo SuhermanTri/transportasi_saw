@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Jadwal;
 use App\Models\Kendaraan;
 use App\Models\Notifikasi;
+use App\Services\ApprovalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -113,7 +114,29 @@ class JadwalController extends Controller
     public function updateStatus(Request $request)
     {
         $request->validate(['status_driver' => 'required|in:tersedia,cuti,sakit,dinas_luar,istirahat']);
-        Auth::user()->update(['status_driver' => $request->status_driver]);
-        return redirect()->back()->with('success', 'Status driver diperbarui.');
+
+        $driver     = Auth::user();
+        $statusLama = $driver->status_driver;
+        $driver->update(['status_driver' => $request->status_driver]);
+
+        $pesan    = 'Status driver diperbarui.';
+        $approval = app(ApprovalService::class);
+
+        // Feedback otomatis ke pemohon saat driver tidak tersedia
+        if ($request->status_driver !== 'tersedia' && $statusLama === 'tersedia') {
+            $hasil = $approval->driverTidakTersedia($driver->fresh());
+            $total = $hasil['dialihkan'] + $hasil['menunggu'];
+            if ($total > 0) {
+                $pesan .= " {$total} jadwal Anda dilepas: {$hasil['dialihkan']} dialihkan ke kendaraan lain, "
+                        . "{$hasil['menunggu']} pemohon diberi informasi otomatis bahwa driver tidak tersedia.";
+            }
+        }
+
+        // Driver tersedia kembali → antrean yang menunggu bisa dijadwalkan
+        if ($request->status_driver === 'tersedia' && $statusLama !== 'tersedia') {
+            try { $approval->driverTersediaKembali(); } catch (\Throwable) {}
+        }
+
+        return redirect()->back()->with('success', $pesan);
     }
 }

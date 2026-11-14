@@ -29,7 +29,9 @@
             <div class="d-flex align-items-start gap-3">
                 <i class="bi {{ $fbMeta['icon'] }} fs-5 flex-shrink-0 mt-1"></i>
                 <div>
-                    <div class="fw-semibold">{{ $fbMeta['label'] }} dari Dispatcher</div>
+                    <div class="fw-semibold">
+                        {{ $fbMeta['label'] }}{{ $permintaan->feedback_type === 'driver_tidak_tersedia' ? ' (informasi otomatis sistem)' : ' dari Dispatcher' }}
+                    </div>
                     <div class="mt-1">{{ $permintaan->catatan_dispatcher }}</div>
                     @if($permintaan->feedback_type !== 'ditolak')
                     <div class="small text-muted mt-2">

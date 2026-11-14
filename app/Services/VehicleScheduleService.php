@@ -46,6 +46,8 @@ class VehicleScheduleService
      *                                 (null = tidak ada filter gage, semua kendaraan boleh)
      * @param  array       $reservasi  Slot yang sedang dipesan sementara (lihat ApprovalService::prosesAntrian)
      *                                 format: [['id_kendaraan' => int, 'mulai' => Carbon, 'selesai' => Carbon], ...]
+     * @param  bool        $cekDriver  true = kendaraan yang driver-nya berstatus selain 'tersedia'
+     *                                 (cuti/sakit/dinas_luar/istirahat) tidak dianggap tersedia
      */
     public function kendaraanTersedia(
         string $tanggal,
@@ -53,7 +55,8 @@ class VehicleScheduleService
         string $jamSelesai,
         ?string $tipeGage = null,
         ?string $tanggalSelesai = null,
-        array $reservasi = []
+        array $reservasi = [],
+        bool $cekDriver = true
     ) {
         [$mulai, $selesai] = $this->rentang($tanggal, $jamMulai, $jamSelesai, $tanggalSelesai);
 
@@ -77,6 +80,10 @@ class VehicleScheduleService
                     $inner->where('tipe_gage', 'bebas')->orWhere('tipe_gage', $tipeGage)
                 )
             )
+            ->when($cekDriver, fn($q) => $q->where(fn($d) =>
+                $d->whereNull('driver_user_id')
+                  ->orWhereHas('driverUser', fn($u) => $u->where('status_driver', 'tersedia'))
+            ))
             ->whereNotIn('id_kendaraan', $terpakai)
             ->orderBy('id_kendaraan')
             ->get();

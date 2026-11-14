@@ -8,6 +8,7 @@ use App\Models\Notifikasi;
 use App\Models\Permintaan;
 use App\Models\PermintaanLog;
 use App\Services\ApprovalService;
+use App\Services\SawService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -17,6 +18,9 @@ class PermintaanController extends Controller
 
     public function index()
     {
+        // Ranking selalu dari perhitungan SAW terbaru sesuai data di database
+        app(SawService::class)->hitungUlang();
+
         $permintaan = Permintaan::with(['user', 'urgensi', 'hasilSaw'])
             ->whereDate('tanggal_berangkat', '>=', today())
             ->whereDate('tanggal_berangkat', '<=', today()->addDay())
@@ -98,6 +102,9 @@ class PermintaanController extends Controller
         $dataLama = ['tanggal_berangkat' => $permintaan->tanggal_berangkat->format('Y-m-d')];
 
         $this->approval->reschedule($permintaan, $request->tanggal_berangkat, (string) $request->catatan);
+
+        // Tanggal memengaruhi skor gage → hitung ulang prioritas
+        app(SawService::class)->hitungUlang();
 
         // Audit trail
         PermintaanLog::catat(

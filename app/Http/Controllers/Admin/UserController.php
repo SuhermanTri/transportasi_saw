@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Kendaraan;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SawService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -117,7 +118,13 @@ class UserController extends Controller
             $data['password'] = Hash::make($request->password);
         }
 
+        $jabatanBerubah = (string) $user->jabatan !== (string) $request->jabatan;
         $user->update($data);
+
+        // Jabatan pemohon adalah kriteria SAW → hitung ulang prioritas
+        if ($jabatanBerubah) {
+            app(SawService::class)->hitungUlang();
+        }
 
         $this->hubungkanKendaraanDriver($user);
 

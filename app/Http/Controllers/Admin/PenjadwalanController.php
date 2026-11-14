@@ -89,6 +89,12 @@ class PenjadwalanController extends Controller
                 ->with('error', 'Permintaan ini sudah memiliki jadwal aktif.');
         }
 
+        // Driver kendaraan sedang tidak tersedia (cuti/sakit/dinas luar/istirahat)
+        if ($kendaraan->driverUser && $kendaraan->driverUser->status_driver !== 'tersedia') {
+            return back()->withInput()
+                ->with('error', "Driver {$kendaraan->driverUser->nama} sedang tidak tersedia. Pilih kendaraan lain.");
+        }
+
         $tanggal    = $permintaan->tanggal_berangkat->format('Y-m-d');
         $jamMulai   = $permintaan->jam_berangkat  ?? '08:00';
         $jamSelesai = $permintaan->jam_kembali    ?? '17:00';

@@ -34,6 +34,8 @@ class Permintaan extends Model
         'ditolak'           => ['color' => 'danger',  'icon' => 'bi-x-circle-fill',  'label' => 'Ditolak'],
         'dijadwalkan_ulang' => ['color' => 'warning', 'icon' => 'bi-arrow-repeat',   'label' => 'Dijadwalkan Ulang'],
         'dioverride'        => ['color' => 'warning', 'icon' => 'bi-arrow-left-right','label' => 'Dialihkan'],
+        // Diisi otomatis oleh sistem (bukan input dispatcher)
+        'driver_tidak_tersedia' => ['color' => 'warning', 'icon' => 'bi-person-x-fill', 'label' => 'Driver Tidak Tersedia'],
     ];
 
     public function getFeedbackLabelAttribute(): string

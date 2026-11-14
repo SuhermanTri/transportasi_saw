@@ -32,7 +32,8 @@ class PermintaanController extends Controller
     public function create()
     {
         $urgensiList = MasterUrgensi::orderByDesc('nilai_saw')->get();
-        return view('user.permintaan.create', compact('urgensiList'));
+        $jendela     = $this->jendelaPengajuan();
+        return view('user.permintaan.create', compact('urgensiList', 'jendela'));
     }
 
     public function store(Request $request)
@@ -40,19 +41,13 @@ class PermintaanController extends Controller
         $data = $request->validate([
             'tujuan'            => 'required|string|max:150',
             'urgensi_id'        => 'required|exists:master_urgensi,id',
-            'tanggal_berangkat' => [
-                'required', 'date',
-                'after_or_equal:today',
-                'before_or_equal:' . today()->addDay()->format('Y-m-d'),
-            ],
+            'tanggal_berangkat' => $this->aturanTanggalBerangkat(),
             'jam_berangkat'     => 'required|date_format:H:i',
             'tanggal_kembali'   => 'nullable|date|after_or_equal:tanggal_berangkat',
             'jam_kembali'       => 'nullable|date_format:H:i',
             'jumlah_penumpang'  => 'required|integer|min:1|max:50',
             'keterangan'        => 'nullable|string|max:255',
         ], [
-            'tanggal_berangkat.after_or_equal'  => 'Permintaan kendaraan hanya dapat diajukan untuk hari ini atau besok.',
-            'tanggal_berangkat.before_or_equal' => 'Permintaan kendaraan hanya dapat diajukan untuk hari ini atau besok.',
         ]);
 
         $permintaan = Permintaan::create([
@@ -90,27 +85,28 @@ class PermintaanController extends Controller
             ->where('status', 'menunggu')
             ->findOrFail($id);
         $urgensiList = MasterUrgensi::orderByDesc('nilai_saw')->get();
-        return view('user.permintaan.edit', compact('permintaan', 'urgensiList'));
+        $jendela     = $this->jendelaPengajuan();
+        return view('user.permintaan.edit', compact('permintaan', 'urgensiList', 'jendela'));
     }
 
     public function update(Request $request, $id)
     {
+        $tanggalTersimpan = Permintaan::where('id_user', Auth::id())
+            ->where('id_permintaan', $id)
+            ->value('tanggal_berangkat');
+
         $data = $request->validate([
             'tujuan'            => 'required|string|max:150',
             'urgensi_id'        => 'required|exists:master_urgensi,id',
-            'tanggal_berangkat' => [
-                'required', 'date',
-                'after_or_equal:today',
-                'before_or_equal:' . today()->addDay()->format('Y-m-d'),
-            ],
+            'tanggal_berangkat' => $this->aturanTanggalBerangkat(
+                $tanggalTersimpan ? \Carbon\Carbon::parse($tanggalTersimpan)->format('Y-m-d') : null
+            ),
             'jam_berangkat'     => 'required|date_format:H:i',
             'tanggal_kembali'   => 'nullable|date|after_or_equal:tanggal_berangkat',
             'jam_kembali'       => 'nullable|date_format:H:i',
             'jumlah_penumpang'  => 'required|integer|min:1|max:50',
             'keterangan'        => 'nullable|string|max:255',
         ], [
-            'tanggal_berangkat.after_or_equal'  => 'Permintaan kendaraan hanya dapat diajukan untuk hari ini atau besok.',
-            'tanggal_berangkat.before_or_equal' => 'Permintaan kendaraan hanya dapat diajukan untuk hari ini atau besok.',
         ]);
 
         $permintaan = Permintaan::where('id_user', Auth::id())
@@ -152,6 +148,75 @@ class PermintaanController extends Controller
 
         return redirect()->route('user.permintaan.index')
             ->with('success', 'Permintaan berhasil dibatalkan.');
+    }
+
+    /** Seluruh pemeriksaan waktu pengajuan memakai WIB. */
+    private const ZONA_WAKTU = 'Asia/Jakarta';
+
+    /** Jendela pengajuan request H-1 (untuk penggunaan besok): 08:00 s.d. sebelum 16:00 WIB. */
+    private const JAM_BUKA_H1  = '08:00';
+    private const JAM_TUTUP_H1 = '16:00';
+
+    /**
+     * Kondisi jendela pengajuan saat ini (dipakai backend & form).
+     * - Hari ini (hari yang sama): selalu boleh diajukan.
+     * - Besok (H-1): hanya pukul 08:00–16:00 WIB, berlaku setiap hari termasuk Sabtu/Minggu.
+     */
+    private function jendelaPengajuan(): array
+    {
+        $sekarang = now(self::ZONA_WAKTU);
+        $jam      = $sekarang->format('H:i');
+
+        return [
+            'sekarang'    => $sekarang,
+            'hariIni'     => $sekarang->copy()->startOfDay(),
+            'besok'       => $sekarang->copy()->startOfDay()->addDay(),
+            'besokDibuka' => $jam >= self::JAM_BUKA_H1 && $jam < self::JAM_TUTUP_H1,
+            'jamBuka'     => self::JAM_BUKA_H1,
+            'jamTutup'    => self::JAM_TUTUP_H1,
+        ];
+    }
+
+    /**
+     * Aturan tanggal berangkat untuk pengajuan request oleh user.
+     * - Tanggal hari ini: selalu diterima (tetap melalui urgensi, AHP-SAW, ketersediaan & persetujuan dispatcher).
+     * - Tanggal besok: hanya diterima bila diajukan pukul 08:00–16:00 WIB.
+     * - Tanggal lain: ditolak.
+     *
+     * @param string|null $tanggalTersimpan Saat edit: tanggal yang sudah tersimpan tidak diperiksa ulang
+     *                                      jendela waktunya (permintaan yang sudah diajukan tetap sah).
+     */
+    private function aturanTanggalBerangkat(?string $tanggalTersimpan = null): array
+    {
+        $j = $this->jendelaPengajuan();
+
+        return [
+            'bail', 'required', 'date',
+            function (string $attribute, $value, \Closure $fail) use ($j, $tanggalTersimpan) {
+                try {
+                    $tanggal = \Carbon\Carbon::parse($value, self::ZONA_WAKTU)->startOfDay();
+                } catch (\Throwable) {
+                    return; // format tanggal ditangani aturan 'date'
+                }
+
+                if ($tanggal->equalTo($j['hariIni'])) {
+                    return; // request hari yang sama selalu boleh diajukan
+                }
+
+                if ($tanggal->equalTo($j['besok'])) {
+                    if ($j['besokDibuka'] || $tanggal->format('Y-m-d') === $tanggalTersimpan) {
+                        return;
+                    }
+                    $fail("Pengajuan request H-1 untuk tanggal {$tanggal->translatedFormat('d M Y')} hanya dibuka pukul "
+                        . "{$j['jamBuka']}–{$j['jamTutup']} WIB (sekarang {$j['sekarang']->format('H:i')} WIB). "
+                        . "Anda tetap dapat mengajukan request untuk penggunaan hari ini.");
+                    return;
+                }
+
+                $fail("Request kendaraan hanya dapat diajukan untuk hari ini ({$j['hariIni']->translatedFormat('d M Y')}) "
+                    . "atau besok ({$j['besok']->translatedFormat('d M Y')}, pukul {$j['jamBuka']}–{$j['jamTutup']} WIB).");
+            },
+        ];
     }
 
     private function runSawSilently(): void

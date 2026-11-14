@@ -29,10 +29,13 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label fw-medium">Tujuan Perjalanan <span class="text-danger">*</span></label>
-                    <input type="text" name="tujuan" class="form-control @error('tujuan') is-invalid @enderror"
-                           value="{{ old('tujuan') }}"
-                           placeholder="cth: Kantor Pusat PT Maju Bersama, Jakarta Selatan" required>
-                    @error('tujuan')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="position-relative">
+                        <input type="text" id="inputTujuan" name="tujuan" class="form-control @error('tujuan') is-invalid @enderror"
+                               value="{{ old('tujuan') }}" maxlength="150" autocomplete="off"
+                               placeholder="Ketik nama gedung / alamat, cth: Patra Jasa Office Tower" required>
+                        @error('tujuan')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        @include('user.permintaan._cari_tujuan')
+                    </div>
                 </div>
 
                 <div class="col-12">
@@ -53,10 +56,10 @@
                     <label class="form-label fw-medium">Tanggal Berangkat <span class="text-danger">*</span></label>
                     <input type="date" name="tanggal_berangkat" class="form-control @error('tanggal_berangkat') is-invalid @enderror"
                            value="{{ old('tanggal_berangkat') }}"
-                           min="{{ today()->format('Y-m-d') }}"
-                           max="{{ today()->addDay()->format('Y-m-d') }}" required>
+                           min="{{ $jendela['hariIni']->format('Y-m-d') }}"
+                           max="{{ ($jendela['besokDibuka'] ? $jendela['besok'] : $jendela['hariIni'])->format('Y-m-d') }}" required>
                     @error('tanggal_berangkat')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    <div class="form-text"><i class="bi bi-info-circle me-1"></i>Hanya dapat diajukan untuk hari ini atau besok.</div>
+                    @include('user.permintaan._info_jendela')
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Jam Berangkat <span class="text-danger">*</span></label>

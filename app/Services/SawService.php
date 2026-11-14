@@ -93,6 +93,20 @@ class SawService
         ];
     }
 
+    /**
+     * Hitung ulang SAW tanpa menggagalkan proses pemanggil.
+     * Dipanggil setiap ada perubahan data yang memengaruhi penilaian
+     * (permintaan, jabatan pemohon, data kendaraan/gage, bobot AHP).
+     */
+    public function hitungUlang(): void
+    {
+        try {
+            $this->hitung();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Hitung ulang SAW gagal: ' . $e->getMessage());
+        }
+    }
+
     /** Ambil bobot AHP dari tabel kriteria. Fallback ke 1/3 jika belum dihitung. */
     private function ambilBobot(): array
     {

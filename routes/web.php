@@ -103,6 +103,10 @@ Route::prefix('user')->name('user.')->middleware(['auth', 'role:user'])->group(f
 
     Route::get('/dashboard', [User\DashboardController::class, 'index'])->name('dashboard');
 
+    // Saran alamat tujuan (autocomplete) — dibatasi 60 permintaan/menit per user
+    Route::get('/lokasi/cari', [User\LokasiController::class, 'cari'])
+        ->middleware('throttle:60,1')->name('lokasi.cari');
+
     Route::prefix('permintaan')->name('permintaan.')->group(function () {
         Route::get('/',          [User\PermintaanController::class, 'index'])->name('index');
         Route::get('/create',    [User\PermintaanController::class, 'create'])->name('create');

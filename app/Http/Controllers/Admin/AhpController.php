@@ -71,6 +71,10 @@ class AhpController extends Controller
     public function hitung()
     {
         $this->ahp->hitung();
+
+        // Bobot berubah → perbarui nilai preferensi & ranking permintaan
+        app(\App\Services\SawService::class)->hitungUlang();
+
         return redirect()->route('admin.ahp.index')
             ->with('success', 'Bobot AHP berhasil dihitung dan disimpan.');
     }

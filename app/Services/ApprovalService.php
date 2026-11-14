@@ -6,10 +6,16 @@ use App\Models\Jadwal;
 use App\Models\Kendaraan;
 use App\Models\Notifikasi;
 use App\Models\Permintaan;
+use App\Models\PermintaanLog;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 class ApprovalService
 {
+    /** Jam perjalanan diisi user dalam WIB. */
+    public const ZONA_WAKTU = 'Asia/Jakarta';
+
     public function __construct(
         private SawService $saw,
         private VehicleScheduleService $schedule,
@@ -31,8 +37,167 @@ class ApprovalService
             return; // berhasil auto-jadwal, notifikasi sudah dikirim saat jadwal dibuat
         }
 
+        // Kendaraan sebenarnya ada, tetapi driver-nya tidak tersedia → feedback otomatis
+        $kendala = $this->kendalaDriver($permintaan);
+        if ($kendala !== null) {
+            $this->tandaiDriverTidakTersedia($permintaan, $kendala);
+            return;
+        }
+
         $permintaan->update(['status' => 'menunggu_konfirmasi']);
         $this->kirimNotifikasi($permintaan, 'menunggu_konfirmasi');
+    }
+
+    /* ════════════════════════════════════════════════════════════
+     | Feedback otomatis: driver tidak tersedia
+     ═══════════════════════════════════════════════════════════ */
+
+    public const LABEL_STATUS_DRIVER = [
+        'tersedia'   => 'Tersedia',
+        'cuti'       => 'Cuti',
+        'sakit'      => 'Sakit',
+        'dinas_luar' => 'Dinas Luar',
+        'istirahat'  => 'Istirahat',
+    ];
+
+    /**
+     * Jika permintaan tidak mendapat kendaraan HANYA karena driver tidak tersedia,
+     * kembalikan keterangan driver-nya (mis. "Komeng (Cuti)"). Selain itu null.
+     */
+    public function kendalaDriver(Permintaan $permintaan): ?string
+    {
+        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage] = $this->slotPermintaan($permintaan);
+
+        $tanpaCekDriver = $this->schedule->kendaraanTersedia(
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, [], false
+        );
+        if ($tanpaCekDriver->isEmpty()) {
+            return null; // memang tidak ada kendaraan (bentrok jadwal / gage)
+        }
+
+        $denganCekDriver = $this->schedule->kendaraanTersedia(
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai
+        );
+        if ($denganCekDriver->isNotEmpty()) {
+            return null; // ada kendaraan + driver, kendala lain (antrean prioritas)
+        }
+
+        return $tanpaCekDriver->load('driverUser')
+            ->map(fn($k) => ($k->driverUser?->nama ?? $k->nama_driver ?? 'Driver')
+                . ' (' . (self::LABEL_STATUS_DRIVER[$k->driverUser?->status_driver] ?? 'tidak tersedia') . ')')
+            ->unique()
+            ->implode(', ');
+    }
+
+    /**
+     * Tandai permintaan: driver tidak tersedia.
+     * Status → 'menunggu_konfirmasi' (alur yang sudah ada untuk "belum ada kendaraan"),
+     * feedback diisi otomatis, user & dispatcher diberi notifikasi, dicatat di log permintaan.
+     * Permintaan tetap di antrean dan dijadwalkan otomatis bila driver/kendaraan tersedia.
+     */
+    public function tandaiDriverTidakTersedia(Permintaan $permintaan, string $keteranganDriver, ?int $aktorId = null): void
+    {
+        $tgl     = $permintaan->tanggal_berangkat->format('d M Y');
+        $jam     = substr((string) ($permintaan->jam_berangkat ?? '08:00'), 0, 5);
+        $catatan = "Driver tidak tersedia untuk jadwal {$tgl} pukul {$jam}: {$keteranganDriver}. "
+                 . "Permintaan Anda tetap dalam antrean dan akan dijadwalkan otomatis begitu ada driver/kendaraan yang tersedia.";
+
+        $permintaan->update([
+            'status'             => 'menunggu_konfirmasi',
+            'feedback_type'      => 'driver_tidak_tersedia',
+            'catatan_dispatcher' => $catatan,
+        ]);
+
+        Notifikasi::kirim(
+            $permintaan->id_user,
+            "Driver untuk perjalanan Anda ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) tidak tersedia. Permintaan tetap dalam antrean.",
+            route('user.permintaan.show', $permintaan->id_permintaan)
+        );
+
+        Notifikasi::kirimKeDispatcher(
+            "Info otomatis: driver tidak tersedia untuk permintaan #{$permintaan->id_permintaan} ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) — {$keteranganDriver}. Pemohon sudah diberi tahu.",
+            route('admin.permintaan.show', $permintaan->id_permintaan)
+        );
+
+        PermintaanLog::catat(
+            idPermintaan: $permintaan->id_permintaan,
+            userId:       $aktorId ?? Auth::id() ?? $permintaan->id_user,
+            tipe:         'driver_tidak_tersedia',
+            keterangan:   $keteranganDriver,
+        );
+    }
+
+    /**
+     * Driver mengubah statusnya menjadi tidak tersedia (cuti/sakit/dinas_luar/istirahat).
+     * Jadwal driver yang BELUM dimulai dilepas, lalu antrean diproses ulang:
+     * - dapat kendaraan lain → dijadwalkan otomatis (user diberi tahu pengalihannya);
+     * - tidak ada → feedback otomatis "driver tidak tersedia".
+     *
+     * @return array{dialihkan:int, menunggu:int}
+     */
+    public function driverTidakTersedia(User $driver): array
+    {
+        $statusLabel = self::LABEL_STATUS_DRIVER[$driver->status_driver] ?? $driver->status_driver;
+        $sekarang    = now(self::ZONA_WAKTU);
+
+        $jadwalList = Jadwal::with(['permintaan', 'kendaraan'])
+            ->where('status', 'aktif')
+            ->where('status_perjalanan', 'aktif')
+            ->whereDate('tanggal', '>=', $sekarang->toDateString())
+            ->whereHas('kendaraan', fn($q) => $q->where('driver_user_id', $driver->id_user))
+            ->get()
+            // hanya perjalanan yang belum dimulai
+            ->filter(fn($j) => Carbon::parse($j->tanggal->format('Y-m-d') . ' ' . $j->jam_mulai, self::ZONA_WAKTU)->gt($sekarang));
+
+        $terdampak = [];
+        foreach ($jadwalList as $j) {
+            $j->kendaraan?->update(['status' => 'tersedia']);
+            if ($driver->jumlah_perjalanan > 0) {
+                $driver->decrement('jumlah_perjalanan');
+            }
+            $j->permintaan?->update(['status' => 'disetujui']);
+            if ($j->permintaan) {
+                $terdampak[] = $j->permintaan->id_permintaan;
+            }
+            $j->delete();
+        }
+
+        if (empty($terdampak)) {
+            return ['dialihkan' => 0, 'menunggu' => 0];
+        }
+
+        $this->prosesAntrian();
+
+        $hasil = ['dialihkan' => 0, 'menunggu' => 0];
+        foreach (Permintaan::with('jadwal.kendaraan')->whereIn('id_permintaan', $terdampak)->get() as $p) {
+            $keterangan = "{$driver->nama} ({$statusLabel})";
+
+            if ($p->jadwal && $p->jadwal->status === 'aktif') {
+                $hasil['dialihkan']++;
+                Notifikasi::kirim(
+                    $p->id_user,
+                    "Driver {$driver->nama} tidak tersedia ({$statusLabel}). Perjalanan Anda ke \"{$p->tujuan}\" dialihkan otomatis ke kendaraan {$p->jadwal->kendaraan?->no_polisi}.",
+                    route('user.permintaan.show', $p->id_permintaan)
+                );
+                PermintaanLog::catat(
+                    idPermintaan: $p->id_permintaan,
+                    userId:       $driver->id_user,
+                    tipe:         'driver_tidak_tersedia',
+                    keterangan:   "{$keterangan} — dialihkan otomatis ke {$p->jadwal->kendaraan?->no_polisi}",
+                );
+            } else {
+                $hasil['menunggu']++;
+                $this->tandaiDriverTidakTersedia($p, $keterangan, $driver->id_user);
+            }
+        }
+
+        return $hasil;
+    }
+
+    /** Driver kembali tersedia → proses antrean agar permintaan yang menunggu dijadwalkan. */
+    public function driverTersediaKembali(): void
+    {
+        $this->prosesAntrian();
     }
 
     /**

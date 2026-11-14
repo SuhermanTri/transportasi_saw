@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Kendaraan;
 use App\Models\User;
+use App\Services\SawService;
 use Illuminate\Http\Request;
 
 class KendaraanController extends Controller
@@ -40,6 +41,7 @@ class KendaraanController extends Controller
         $data = array_merge($data, $this->dataDriver($request));
 
         Kendaraan::create($data);
+        app(SawService::class)->hitungUlang(); // jumlah kendaraan memengaruhi skor gage
 
         return redirect()->route('admin.kendaraan.index')
             ->with('success', 'Kendaraan berhasil ditambahkan.');
@@ -72,6 +74,7 @@ class KendaraanController extends Controller
 
         $kendaraan = Kendaraan::findOrFail($id);
         $kendaraan->update($data);
+        app(SawService::class)->hitungUlang(); // tipe gage memengaruhi skor gage
 
         return redirect()->route('admin.kendaraan.index')
             ->with('success', 'Kendaraan berhasil diperbarui.');
@@ -100,6 +103,7 @@ class KendaraanController extends Controller
     public function destroy($id)
     {
         Kendaraan::findOrFail($id)->delete();
+        app(SawService::class)->hitungUlang(); // jumlah kendaraan memengaruhi skor gage
         return redirect()->route('admin.kendaraan.index')
             ->with('success', 'Kendaraan berhasil dihapus.');
     }
