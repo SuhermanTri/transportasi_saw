@@ -179,6 +179,7 @@
                         @else
                             <th>Kendaraan</th>
                             <th>Status</th>
+                            <th title="Merit = 100 − 10 × perjalanan 7 hari terakhir. Makin tinggi, makin diutamakan.">Merit</th>
                         @endif
                         <th style="width:90px">Aksi</th>
                     </tr>
@@ -236,6 +237,14 @@
                                     <span class="badge text-bg-secondary">Tanpa kendaraan</span>
                                 @endif
                             </td>
+                            <td>
+                                <span class="badge text-bg-{{ $u->merit_point >= 80 ? 'success' : ($u->merit_point >= 50 ? 'warning' : 'danger') }}">
+                                    {{ $u->merit_point }}
+                                </span>
+                                <div class="text-muted" style="font-size:.75rem">
+                                    {{ intdiv(100 - (int) $u->merit_point, 10) }}× / 7 hari
+                                </div>
+                            </td>
                         @endif
 
                         {{-- Aksi --}}
@@ -259,7 +268,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="5" class="text-center py-5">
+                        <td colspan="{{ $role === 'driver' ? 6 : 5 }}" class="text-center py-5">
                             <i class="bi bi-inbox fs-1 text-muted d-block mb-2"></i>
                             @if($q)
                                 <strong class="text-muted">

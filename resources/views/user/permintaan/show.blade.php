@@ -165,7 +165,7 @@
         @endif
 
         {{-- ── Tombol Cancel & Reschedule ──────────────────────────────── --}}
-        @if($permintaan->status === 'terjadwal')
+        @if(in_array($permintaan->status, ['terjadwal', 'menunggu_konfirmasi']))
         <hr>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{{ route('user.permintaan.reschedule', $permintaan->id_permintaan) }}"

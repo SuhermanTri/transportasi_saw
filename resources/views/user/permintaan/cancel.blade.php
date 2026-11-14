@@ -24,7 +24,11 @@
                 <div>
                     <div class="fw-semibold">Perhatian!</div>
                     <div class="mt-1 small">
-                        Membatalkan booking akan <strong>membebaskan kendaraan</strong> yang sudah dialokasikan.
+                        @if($permintaan->status === 'menunggu_konfirmasi')
+                            Permintaan ini belum mendapat kendaraan. Membatalkan akan <strong>mengeluarkan permintaan dari antrean</strong>.
+                        @else
+                            Membatalkan booking akan <strong>membebaskan kendaraan</strong> yang sudah dialokasikan.
+                        @endif
                         Anda dapat mengajukan permintaan baru setelah pembatalan.
                     </div>
                 </div>

@@ -37,15 +37,20 @@ class ApprovalService
             return; // berhasil auto-jadwal, notifikasi sudah dikirim saat jadwal dibuat
         }
 
-        // Kendaraan sebenarnya ada, tetapi driver-nya tidak tersedia → feedback otomatis
-        $kendala = $this->kendalaDriver($permintaan);
-        if ($kendala !== null) {
-            $this->tandaiDriverTidakTersedia($permintaan, $kendala);
-            return;
-        }
+        // Tidak mendapat kendaraan → feedback otomatis "driver tidak tersedia":
+        // karena driver cuti/sakit/dll, atau semua kendaraan + driver sudah dibooking user lain.
+        $kendala = $this->kendalaDriver($permintaan) ?? $this->keteranganKendaraanPenuh($permintaan);
+        $this->tandaiDriverTidakTersedia($permintaan, $kendala);
+    }
 
-        $permintaan->update(['status' => 'menunggu_konfirmasi']);
-        $this->kirimNotifikasi($permintaan, 'menunggu_konfirmasi');
+    /** Keterangan saat semua kendaraan (yang sesuai aturan ganjil-genap) sudah dibooking pada jam tersebut. */
+    public function keteranganKendaraanPenuh(Permintaan $permintaan): string
+    {
+        [, , , , $tipeGage] = $this->slotPermintaan($permintaan);
+
+        return $tipeGage
+            ? "semua kendaraan plat {$tipeGage} (aturan ganjil-genap) beserta driver-nya sudah dibooking pada jam tersebut"
+            : 'semua kendaraan beserta driver-nya sudah dibooking pada jam tersebut';
     }
 
     /* ════════════════════════════════════════════════════════════
@@ -100,7 +105,8 @@ class ApprovalService
         $tgl     = $permintaan->tanggal_berangkat->format('d M Y');
         $jam     = substr((string) ($permintaan->jam_berangkat ?? '08:00'), 0, 5);
         $catatan = "Driver tidak tersedia untuk jadwal {$tgl} pukul {$jam}: {$keteranganDriver}. "
-                 . "Permintaan Anda tetap dalam antrean dan akan dijadwalkan otomatis begitu ada driver/kendaraan yang tersedia.";
+                 . "Permintaan Anda tetap dalam antrean dan akan dijadwalkan otomatis begitu ada driver/kendaraan yang tersedia, "
+                 . "atau Anda dapat melakukan reschedule maupun membatalkan permintaan ini.";
 
         $permintaan->update([
             'status'             => 'menunggu_konfirmasi',
@@ -110,7 +116,7 @@ class ApprovalService
 
         Notifikasi::kirim(
             $permintaan->id_user,
-            "Driver untuk perjalanan Anda ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) tidak tersedia. Permintaan tetap dalam antrean.",
+            "Driver untuk perjalanan Anda ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) tidak tersedia. Permintaan tetap dalam antrean — Anda dapat reschedule atau membatalkannya.",
             route('user.permintaan.show', $permintaan->id_permintaan)
         );
 

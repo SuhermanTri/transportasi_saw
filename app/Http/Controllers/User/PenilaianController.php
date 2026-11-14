@@ -75,6 +75,17 @@ class PenilaianController extends Controller
             );
         }
 
+        // Perjalanan selesai final → kunci kendaraan terbuka; beri tahu dispatcher
+        $kendaraan = $jadwal->kendaraan;
+        Notifikasi::kirimKeDispatcher(
+            "Perjalanan ke \"{$jadwal->permintaan?->tujuan}\" telah dikonfirmasi selesai oleh pemohon. "
+            . "Kendaraan {$kendaraan?->no_polisi}" . ($driver ? " (driver {$driver->nama})" : '') . " kembali tersedia untuk dibooking.",
+            route('admin.penjadwalan.index')
+        );
+
+        // Permintaan yang sedang menunggu kendaraan dapat langsung dijadwalkan
+        try { app(\App\Services\ApprovalService::class)->prosesAntrian(); } catch (\Throwable) {}
+
         return redirect()->route('user.permintaan.index')
             ->with('success', 'Konfirmasi dan penilaian berhasil dikirim. Terima kasih!');
     }

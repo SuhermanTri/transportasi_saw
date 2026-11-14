@@ -236,7 +236,7 @@ class PermintaanController extends Controller
     {
         $permintaan = Permintaan::with('jadwal.kendaraan')
             ->where('id_user', Auth::id())
-            ->where('status', 'terjadwal')
+            ->whereIn('status', ['terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
 
         return view('user.permintaan.cancel', compact('permintaan'));
@@ -252,7 +252,7 @@ class PermintaanController extends Controller
 
         $permintaan = Permintaan::with('jadwal.kendaraan.driverUser')
             ->where('id_user', Auth::id())
-            ->where('status', 'terjadwal')
+            ->whereIn('status', ['terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
 
         $dataLama = [
@@ -309,7 +309,9 @@ class PermintaanController extends Controller
         );
 
         return redirect()->route('user.permintaan.index')
-            ->with('success', 'Booking berhasil dibatalkan. Kendaraan telah dibebaskan.');
+            ->with('success', $dataLama['status'] === 'menunggu_konfirmasi'
+                ? 'Permintaan berhasil dibatalkan dan dikeluarkan dari antrean.'
+                : 'Booking berhasil dibatalkan. Kendaraan telah dibebaskan.');
     }
 
     /* ════════════════════════════════════════════════════════════
@@ -320,7 +322,7 @@ class PermintaanController extends Controller
     public function rescheduleForm($id)
     {
         $permintaan = Permintaan::where('id_user', Auth::id())
-            ->whereIn('status', ['disetujui', 'terjadwal'])
+            ->whereIn('status', ['disetujui', 'terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
 
         return view('user.permintaan.reschedule', compact('permintaan'));
@@ -330,7 +332,7 @@ class PermintaanController extends Controller
     {
         $permintaan = Permintaan::with('jadwal.kendaraan')
             ->where('id_user', Auth::id())
-            ->whereIn('status', ['disetujui', 'terjadwal'])
+            ->whereIn('status', ['disetujui', 'terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
 
         $data = $request->validate([

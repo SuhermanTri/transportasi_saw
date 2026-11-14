@@ -29,6 +29,14 @@ class Kendaraan extends Model
                 $k->tipe_gage = self::gageFromNomorPolisi($k->no_polisi);
             }
         });
+
+        // Driver kendaraan berganti / kendaraan ditambah atau dihapus → sinkronkan merit
+        static::saved(function (self $k) {
+            if ($k->wasRecentlyCreated || $k->wasChanged('driver_user_id')) {
+                \App\Services\DriverMeritService::sinkronOtomatis();
+            }
+        });
+        static::deleted(fn() => \App\Services\DriverMeritService::sinkronOtomatis());
     }
 
     /** Deteksi tipe gage dari digit angka terakhir nomor polisi. */

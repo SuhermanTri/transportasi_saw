@@ -33,6 +33,14 @@ class ResetStatusJadwal extends Command
             $jadwal->permintaan?->update(['status' => 'selesai']);
         }
 
+        // Merit driver bergeser seiring periode 7 hari berjalan
+        \App\Services\DriverMeritService::sinkronOtomatis();
+
+        // Jadwal kedaluwarsa ditutup → kunci kendaraan terbuka, proses antrean yang menunggu
+        if ($expired->isNotEmpty()) {
+            try { app(\App\Services\ApprovalService::class)->prosesAntrian(); } catch (\Throwable) {}
+        }
+
         $this->info("Reset {$expired->count()} jadwal kadaluarsa.");
     }
 }

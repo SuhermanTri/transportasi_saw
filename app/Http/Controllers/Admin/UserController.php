@@ -150,6 +150,9 @@ class UserController extends Controller
         // Nama akun diganti → samakan nama driver di kendaraannya
         Kendaraan::where('driver_user_id', $user->id_user)
             ->update(['nama_driver' => $user->nama]);
+
+        // update massal tidak memicu event model → sinkronkan merit manual
+        \App\Services\DriverMeritService::sinkronOtomatis();
     }
 
     public function destroy($id)

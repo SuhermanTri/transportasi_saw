@@ -31,6 +31,11 @@ class GageService
      */
     public function isGageAktif(string $jamMulai, string $jamSelesai): bool
     {
+        // Samakan format ke HH:MM — kolom TIME dari database berformat HH:MM:SS,
+        // dan "16:00:00" > "16:00" bernilai benar pada perbandingan teks.
+        $jamMulai   = substr(trim($jamMulai), 0, 5);
+        $jamSelesai = substr(trim($jamSelesai), 0, 5);
+
         foreach (self::JAM_GAGE as $w) {
             if ($jamMulai < $w['selesai'] && $jamSelesai > $w['mulai']) {
                 return true;

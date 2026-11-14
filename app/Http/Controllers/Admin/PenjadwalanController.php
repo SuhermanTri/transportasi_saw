@@ -89,6 +89,16 @@ class PenjadwalanController extends Controller
                 ->with('error', 'Permintaan ini sudah memiliki jadwal aktif.');
         }
 
+        // Kendaraan masih dalam perjalanan yang belum dikonfirmasi selesai → terkunci
+        $kunci = $this->schedule->kendaraanTerkunci()->get($kendaraan->id_kendaraan);
+        if ($kunci) {
+            $statusTrip = $kunci->status_perjalanan === 'selesai_driver'
+                ? 'driver sudah menandai selesai, menunggu konfirmasi pemohon'
+                : 'perjalanan belum ditandai selesai oleh driver';
+            return back()->withInput()
+                ->with('error', "Kendaraan {$kendaraan->no_polisi} terkunci: masih dalam perjalanan ke \"{$kunci->permintaan?->tujuan}\" ({$statusTrip}). Pilih kendaraan lain.");
+        }
+
         // Driver kendaraan sedang tidak tersedia (cuti/sakit/dinas luar/istirahat)
         if ($kendaraan->driverUser && $kendaraan->driverUser->status_driver !== 'tersedia') {
             return back()->withInput()
@@ -191,6 +201,11 @@ class PenjadwalanController extends Controller
             // Recalculate SAW ranking agar permintaan yang kembali ke antrian terurut ulang
             if ($request->status === 'batal') {
                 try { $this->saw->hitung(); } catch (\Throwable) {}
+            }
+
+            // Dispatcher menandai selesai → kunci kendaraan terbuka, antrean yang menunggu diproses
+            if ($request->status === 'selesai') {
+                try { app(\App\Services\ApprovalService::class)->prosesAntrian(); } catch (\Throwable) {}
             }
         }
 

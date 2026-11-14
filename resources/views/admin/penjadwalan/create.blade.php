@@ -133,7 +133,8 @@ selectPermintaan.addEventListener('change', async function () {
                 const opt = document.createElement('option');
                 opt.value = k.id_kendaraan;
                 const gageInfo = data.gage_aktif ? `Gage: ${k.tipe_gage}` : 'Gage: bebas (tidak dibatasi)';
-                opt.textContent = `${k.nama_kendaraan} – ${k.no_polisi} (${k.nama_driver || 'Tanpa driver'} · Kap. ${k.kapasitas} org · ${gageInfo})`;
+                const meritInfo = k.merit_driver !== undefined ? ` · Merit ${k.merit_driver} (${k.perjalanan_7_hari}× / 7 hari)` : '';
+                opt.textContent = `${k.nama_kendaraan} – ${k.no_polisi} (${k.nama_driver || 'Tanpa driver'} · Kap. ${k.kapasitas} org · ${gageInfo}${meritInfo})`;
                 selectKendaraan.appendChild(opt);
             });
             sectionKendaraan.style.display = '';

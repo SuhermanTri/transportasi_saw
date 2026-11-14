@@ -129,6 +129,13 @@
                     <button class="btn btn-primary btn-sm">Perbarui</button>
                 </form>
                 <div class="text-muted small mt-2">Total perjalanan: <strong>{{ auth()->user()->jumlah_perjalanan }}</strong></div>
+                @php $merit = app(\App\Services\DriverMeritService::class)->untukDriver(auth()->user()); @endphp
+                @if($merit)
+                <div class="text-muted small">
+                    Merit: <strong>{{ $merit['merit'] }}</strong>
+                    ({{ $merit['perjalanan'] }} perjalanan dalam 7 hari terakhir — semakin tinggi merit, semakin diutamakan untuk tugas berikutnya)
+                </div>
+                @endif
             </div>
         </div>
 

@@ -22,12 +22,24 @@
             <div class="small mt-1 text-muted">Permintaan berikut memiliki keterangan baru dari Dispatcher. Klik untuk melihat detail.</div>
             <div class="mt-2 d-flex flex-wrap gap-2">
                 @foreach($permintaanFeedback as $pf)
-                <a href="{{ route('user.permintaan.show', $pf->id_permintaan) }}"
-                   class="btn btn-sm btn-outline-danger">
-                    @php $meta = \App\Models\Permintaan::$feedbackMeta[$pf->feedback_type] ?? ['icon' => 'bi-info-circle', 'label' => 'Info']; @endphp
-                    <i class="bi {{ $meta['icon'] }} me-1"></i>
-                    {{ $pf->tujuan }}
-                </a>
+                @php $meta = \App\Models\Permintaan::$feedbackMeta[$pf->feedback_type] ?? ['icon' => 'bi-info-circle', 'label' => 'Info']; @endphp
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="{{ route('user.permintaan.show', $pf->id_permintaan) }}"
+                       class="btn btn-outline-danger">
+                        <i class="bi {{ $meta['icon'] }} me-1"></i>
+                        @if($pf->feedback_type === 'driver_tidak_tersedia')<strong>{{ $meta['label'] }}:</strong>@endif
+                        {{ $pf->tujuan }}
+                    </a>
+                    {{-- Tidak kebagian kendaraan/driver → user bisa reschedule atau batalkan --}}
+                    @if($pf->status === 'menunggu_konfirmasi')
+                    <a href="{{ route('user.permintaan.reschedule', $pf->id_permintaan) }}" class="btn btn-warning">
+                        <i class="bi bi-arrow-repeat me-1"></i>Reschedule
+                    </a>
+                    <a href="{{ route('user.permintaan.cancel', $pf->id_permintaan) }}" class="btn btn-outline-danger">
+                        <i class="bi bi-slash-circle me-1"></i>Batalkan
+                    </a>
+                    @endif
+                </div>
                 @endforeach
             </div>
         </div>
@@ -143,7 +155,19 @@
                                     <span class="text-muted small">—</span>
                                 @endif
                             </td>
-                            <td>{!! $p->statusLabel !!}</td>
+                            <td>
+                                {!! $p->statusLabel !!}
+                                @if($p->status === 'menunggu_konfirmasi')
+                                <div class="d-flex gap-1 mt-1">
+                                    <a href="{{ route('user.permintaan.reschedule', $p->id_permintaan) }}" class="btn btn-warning btn-sm py-0 px-2" title="Reschedule">
+                                        <i class="bi bi-arrow-repeat"></i> Reschedule
+                                    </a>
+                                    <a href="{{ route('user.permintaan.cancel', $p->id_permintaan) }}" class="btn btn-outline-danger btn-sm py-0 px-2" title="Batalkan">
+                                        <i class="bi bi-slash-circle"></i> Batalkan
+                                    </a>
+                                </div>
+                                @endif
+                            </td>
                         </tr>
                         @empty
                         <tr><td colspan="5" class="text-center text-muted py-3">Belum ada permintaan</td></tr>

@@ -19,6 +19,13 @@ class Jadwal extends Model
         'tanggal' => 'date',
     ];
 
+    /** Setiap jadwal dibuat / diubah / dihapus → merit semua driver disinkronkan otomatis. */
+    protected static function booted(): void
+    {
+        static::saved(fn() => \App\Services\DriverMeritService::sinkronOtomatis());
+        static::deleted(fn() => \App\Services\DriverMeritService::sinkronOtomatis());
+    }
+
     public function permintaan()
     {
         return $this->belongsTo(Permintaan::class, 'id_permintaan', 'id_permintaan');
