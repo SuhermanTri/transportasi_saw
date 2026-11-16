@@ -51,6 +51,14 @@ class Permintaan extends Model
         'urgent' => ['color' => 'danger',    'icon' => 'bi-exclamation-triangle-fill', 'label' => 'Urgent'],
     ];
 
+    /** Urutan prioritas dispatcher di antrean (kecil = didahulukan). */
+    public const URUTAN_PRIORITY = ['urgent' => 0, 'high' => 1, 'normal' => 2];
+
+    public function urutanPriority(): int
+    {
+        return self::URUTAN_PRIORITY[$this->priority ?? 'normal'] ?? 2;
+    }
+
     public function getPriorityLabelAttribute(): string
     {
         $m = self::$priorityMeta[$this->priority ?? 'normal'] ?? self::$priorityMeta['normal'];

@@ -129,7 +129,11 @@
         <div class="alert alert-{{ $jadwal->status_perjalanan === 'selesai_final' ? 'secondary' : 'success' }} mb-0">
             <h6 class="fw-semibold mb-2">
                 <i class="bi bi-truck me-2"></i>Kendaraan Ditetapkan
-                @if($jadwal->status_perjalanan === 'selesai_driver')
+                @if($jadwal->status_perjalanan === 'berjalan')
+                    <span class="badge bg-primary ms-2">
+                        <i class="bi bi-car-front-fill me-1"></i>Sedang dalam perjalanan sejak {{ $jadwal->waktu_berangkat?->format('H:i') ?? '-' }} WIB
+                    </span>
+                @elseif($jadwal->status_perjalanan === 'selesai_driver')
                     <span class="badge bg-warning text-dark ms-2">Menunggu Konfirmasi Anda</span>
                 @elseif($jadwal->status_perjalanan === 'selesai_final')
                     <span class="badge bg-secondary ms-2">Perjalanan Selesai</span>
@@ -183,6 +187,58 @@
            class="btn btn-warning">
             <i class="bi bi-arrow-repeat me-1"></i>Reschedule
         </a>
+        @endif
+
+        {{-- ── Saran jadwal: belum dapat kendaraan → reschedule ke saran ─── --}}
+        @if($permintaan->status === 'menunggu_konfirmasi')
+        <div class="alert alert-info mt-3 mb-0">
+            <div class="fw-semibold"><i class="bi bi-calendar-check me-1"></i>Saran jadwal yang masih ada kendaraannya</div>
+            @if(count($saran))
+                <div class="small text-muted mb-2">Klik untuk reschedule ke jadwal tersebut.</div>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach($saran as $s)
+                    <a href="{{ route('user.permintaan.reschedule', ['id' => $permintaan->id_permintaan, 'tanggal_berangkat' => $s['tanggal'], 'jam_berangkat' => $s['jam_berangkat'], 'jam_kembali' => $s['jam_kembali']]) }}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-arrow-repeat me-1"></i>Reschedule ke {{ $s['label'] }}
+                    </a>
+                    @endforeach
+                </div>
+            @else
+                <div class="small mt-1">Belum ada jadwal alternatif yang tersedia saat ini. Permintaan Anda tetap di antrean dan akan dijadwalkan otomatis bila ada kendaraan.</div>
+            @endif
+        </div>
+        @endif
+
+        {{-- ── Ditolak → ajukan ulang dengan data lama + jadwal saran ─────── --}}
+        @if($permintaan->status === 'ditolak')
+        @php
+            $dataLama = [
+                'tujuan'           => $permintaan->tujuan,
+                'urgensi_id'       => $permintaan->urgensi_id,
+                'jumlah_penumpang' => $permintaan->jumlah_penumpang,
+                'keterangan'       => $permintaan->keterangan,
+            ];
+        @endphp
+        <hr>
+        <div class="alert alert-info mb-0">
+            <div class="fw-semibold"><i class="bi bi-arrow-counterclockwise me-1"></i>Ajukan ulang permintaan ini</div>
+            @if(count($saran))
+                <div class="small text-muted mb-2">Jadwal berikut masih ada kendaraannya — data permintaan akan terisi otomatis.</div>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    @foreach($saran as $s)
+                    <a href="{{ route('user.permintaan.create', $dataLama + ['tanggal_berangkat' => $s['tanggal'], 'jam_berangkat' => $s['jam_berangkat'], 'jam_kembali' => $s['jam_kembali']]) }}"
+                       class="btn btn-sm btn-primary">
+                        <i class="bi bi-send me-1"></i>Ajukan Ulang dengan Jadwal Ini: {{ $s['label'] }}
+                    </a>
+                    @endforeach
+                </div>
+            @else
+                <div class="small mb-2">Belum ada jadwal dengan kendaraan tersedia dalam jendela pengajuan saat ini.</div>
+            @endif
+            <a href="{{ route('user.permintaan.create', $dataLama) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-pencil-square me-1"></i>Ajukan Ulang (pilih jadwal sendiri)
+            </a>
+        </div>
         @endif
 
         {{-- ── Riwayat Pembatalan ───────────────────────────────────────── --}}

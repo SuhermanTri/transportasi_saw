@@ -31,7 +31,7 @@
                     <label class="form-label fw-medium">Tujuan Perjalanan <span class="text-danger">*</span></label>
                     <div class="position-relative">
                         <input type="text" id="inputTujuan" name="tujuan" class="form-control @error('tujuan') is-invalid @enderror"
-                               value="{{ old('tujuan') }}" maxlength="150" autocomplete="off"
+                               value="{{ old('tujuan', $prefill['tujuan'] ?? '') }}" maxlength="150" autocomplete="off"
                                placeholder="Ketik nama gedung / alamat, cth: Patra Jasa Office Tower" required>
                         @error('tujuan')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         @include('user.permintaan._cari_tujuan')
@@ -43,7 +43,7 @@
                     <select name="urgensi_id" class="form-select @error('urgensi_id') is-invalid @enderror" required>
                         <option value="">-- Pilih tingkat urgensi --</option>
                         @foreach($urgensiList as $u)
-                            <option value="{{ $u->id }}" {{ old('urgensi_id') == $u->id ? 'selected' : '' }}>
+                            <option value="{{ $u->id }}" {{ old('urgensi_id', $prefill['urgensi_id'] ?? null) == $u->id ? 'selected' : '' }}>
                                 {{ $u->nama_urgensi }}
                                 @if($u->keterangan) — {{ $u->keterangan }} @endif
                             </option>
@@ -55,7 +55,7 @@
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Tanggal Berangkat <span class="text-danger">*</span></label>
                     <input type="date" name="tanggal_berangkat" class="form-control @error('tanggal_berangkat') is-invalid @enderror"
-                           value="{{ old('tanggal_berangkat') }}"
+                           value="{{ old('tanggal_berangkat', $prefill['tanggal_berangkat'] ?? '') }}"
                            min="{{ $jendela['hariIni']->format('Y-m-d') }}"
                            max="{{ ($jendela['besokDibuka'] ? $jendela['besok'] : $jendela['hariIni'])->format('Y-m-d') }}" required>
                     @error('tanggal_berangkat')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -64,7 +64,7 @@
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Jam Berangkat <span class="text-danger">*</span></label>
                     <input type="time" name="jam_berangkat" class="form-control @error('jam_berangkat') is-invalid @enderror"
-                           value="{{ old('jam_berangkat') }}" required>
+                           value="{{ old('jam_berangkat', $prefill['jam_berangkat'] ?? '') }}" required>
                     @error('jam_berangkat')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 
@@ -77,21 +77,26 @@
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Jam Kembali (perkiraan)</label>
                     <input type="time" name="jam_kembali" class="form-control @error('jam_kembali') is-invalid @enderror"
-                           value="{{ old('jam_kembali') }}">
+                           value="{{ old('jam_kembali', $prefill['jam_kembali'] ?? '') }}">
                     @error('jam_kembali')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 
                 <div class="col-md-4">
                     <label class="form-label fw-medium">Jumlah Penumpang <span class="text-danger">*</span></label>
                     <input type="number" name="jumlah_penumpang" class="form-control @error('jumlah_penumpang') is-invalid @enderror"
-                           value="{{ old('jumlah_penumpang', 1) }}" min="1" max="50" required>
+                           value="{{ old('jumlah_penumpang', $prefill['jumlah_penumpang'] ?? 1) }}" min="1" max="50" required>
                     @error('jumlah_penumpang')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+
+                {{-- Peringatan ketersediaan kendaraan (tidak memblokir pengajuan) --}}
+                <div class="col-12">
+                    @include('user.permintaan._cek_ketersediaan')
                 </div>
 
                 <div class="col-12">
                     <label class="form-label fw-medium">Keterangan (Opsional)</label>
                     <textarea name="keterangan" class="form-control" rows="3"
-                              placeholder="Tambahkan keterangan jika perlu...">{{ old('keterangan') }}</textarea>
+                              placeholder="Tambahkan keterangan jika perlu...">{{ old('keterangan', $prefill['keterangan'] ?? '') }}</textarea>
                 </div>
             </div>
             <hr>

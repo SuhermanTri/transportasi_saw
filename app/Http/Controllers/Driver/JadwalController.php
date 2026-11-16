@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Jadwal;
 use App\Models\Kendaraan;
 use App\Models\Notifikasi;
+use App\Models\PermintaanLog;
 use App\Services\ApprovalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,7 +40,7 @@ class JadwalController extends Controller
               ])
               ->where('id_kendaraan', $kid)
               ->where('status', 'aktif')
-              ->whereIn('status_perjalanan', ['aktif', 'selesai_driver'])
+              ->whereIn('status_perjalanan', ['aktif', 'berjalan', 'selesai_driver'])
               ->whereDate('tanggal', '>=', today())
               ->orderBy('tanggal')
               ->get()
@@ -71,6 +72,67 @@ class JadwalController extends Controller
         return view('driver.jadwal.show', compact('jadwal'));
     }
 
+    /**
+     * Driver menekan "Mulai Perjalanan".
+     * Syarat: jadwal milik kendaraan driver, jadwal aktif, belum berangkat, dan tanggalnya hari ini (WIB).
+     */
+    public function mulai($id)
+    {
+        $kid = $this->getKendaraanId();
+
+        $jadwal = Jadwal::with('permintaan.user')
+            ->where('id_kendaraan', $kid)
+            ->findOrFail($id);
+
+        $sekarang = now(Jadwal::ZONA_WAKTU);
+
+        if ($jadwal->status !== 'aktif' || $jadwal->status_perjalanan !== 'aktif') {
+            return redirect()->back()->with('error', 'Perjalanan ini tidak dapat dimulai (sudah berjalan, selesai, atau dibatalkan).');
+        }
+        if ($jadwal->tanggal->format('Y-m-d') !== $sekarang->format('Y-m-d')) {
+            return redirect()->back()->with('error',
+                'Perjalanan hanya dapat dimulai pada tanggal jadwalnya (' . $jadwal->tanggal->format('d M Y') . ').');
+        }
+
+        $jadwal->update([
+            'status_perjalanan' => 'berjalan',
+            'waktu_berangkat'   => $sekarang,
+        ]);
+
+        $permintaan = $jadwal->permintaan;
+        $permintaan?->update(['status' => 'berjalan']);
+
+        $driver  = Auth::user();
+        $jam     = $sekarang->format('H:i');
+        $tujuan  = $permintaan?->tujuan ?? '-';
+        $pemohon = $permintaan?->user?->nama ?? '-';
+
+        if ($permintaan?->id_user) {
+            Notifikasi::kirim(
+                $permintaan->id_user,
+                "Driver {$driver->nama} telah memulai perjalanan ke \"{$tujuan}\" pukul {$jam} WIB.",
+                route('user.permintaan.show', $permintaan->id_permintaan)
+            );
+        }
+
+        Notifikasi::kirimKeDispatcher(
+            "Driver {$driver->nama} mulai perjalanan mengantar {$pemohon} ke \"{$tujuan}\" pukul {$jam} WIB.",
+            route('admin.penjadwalan.index')
+        );
+
+        if ($permintaan) {
+            PermintaanLog::catat(
+                idPermintaan: $permintaan->id_permintaan,
+                userId:       $driver->id_user,
+                tipe:         'mulai_perjalanan',
+                keterangan:   "Driver {$driver->nama} mulai perjalanan pukul {$jam} WIB",
+                dataBaru:     ['status_perjalanan' => 'berjalan', 'waktu_berangkat' => $sekarang->format('Y-m-d H:i:s')],
+            );
+        }
+
+        return redirect()->back()->with('success', "Perjalanan dimulai pukul {$jam} WIB. Hati-hati di jalan!");
+    }
+
     public function selesai($id)
     {
         $kid = $this->getKendaraanId();
@@ -79,8 +141,9 @@ class JadwalController extends Controller
             ->where('id_kendaraan', $kid)
             ->findOrFail($id);
 
-        if ($jadwal->status_perjalanan !== 'aktif') {
-            return redirect()->back()->with('error', 'Status tidak dapat diubah.');
+        // Selesai hanya bisa setelah perjalanan dimulai
+        if ($jadwal->status_perjalanan !== 'berjalan') {
+            return redirect()->back()->with('error', 'Perjalanan belum dimulai. Tekan "Mulai Perjalanan" terlebih dahulu.');
         }
 
         $jadwal->update(['status_perjalanan' => 'selesai_driver']);

@@ -40,6 +40,10 @@
                     <span class="text-muted">Jadwal:</span>
                     <strong class="ms-1">{{ \Carbon\Carbon::parse($jadwal->tanggal)->format('d M Y') }}, {{ $jadwal->jam_mulai }} – {{ $jadwal->jam_selesai }}</strong>
                 </div>
+                <div class="col-12">
+                    <span class="text-muted">Status perjalanan:</span>
+                    <span class="ms-1">@include('partials.badge_perjalanan', ['jadwal' => $jadwal])</span>
+                </div>
             </div>
         </div>
 
@@ -51,7 +55,11 @@
                 <select name="status" class="form-select" id="statusSelect">
                     <option value="aktif"  {{ $jadwal->status === 'aktif'  ? 'selected' : '' }}>Aktif</option>
                     <option value="selesai"{{ $jadwal->status === 'selesai'? 'selected' : '' }}>Selesai</option>
-                    <option value="batal"  {{ $jadwal->status === 'batal'  ? 'selected' : '' }}>Batal</option>
+                    {{-- Batal hanya selama belum berangkat --}}
+                    <option value="batal"  {{ $jadwal->status === 'batal'  ? 'selected' : '' }}
+                            {{ $jadwal->belumBerangkat() ? '' : 'disabled' }}>
+                        Batal{{ $jadwal->belumBerangkat() ? '' : ' (tidak bisa — perjalanan sudah dimulai)' }}
+                    </option>
                 </select>
             </div>
 

@@ -46,8 +46,10 @@ class VehicleScheduleService
      *                                 (null = tidak ada filter gage, semua kendaraan boleh)
      * @param  array       $reservasi  Slot yang sedang dipesan sementara (lihat ApprovalService::prosesAntrian)
      *                                 format: [['id_kendaraan' => int, 'mulai' => Carbon, 'selesai' => Carbon], ...]
-     * @param  bool        $cekDriver  true = kendaraan yang driver-nya berstatus selain 'tersedia'
-     *                                 (cuti/sakit/dinas_luar/istirahat) tidak dianggap tersedia
+     * @param  bool        $cekDriver  true = hanya kendaraan yang PUNYA akun driver dengan status 'tersedia'
+     *                                 (kendaraan tanpa driver / driver cuti, sakit, dinas_luar, istirahat
+     *                                 tidak dialokasikan). false = abaikan driver (dipakai kendalaDriver()).
+     * @param  int|null    $jumlahPenumpang  diisi → hanya kendaraan dengan kapasitas >= jumlah penumpang
      */
     public function kendaraanTersedia(
         string $tanggal,
@@ -56,7 +58,8 @@ class VehicleScheduleService
         ?string $tipeGage = null,
         ?string $tanggalSelesai = null,
         array $reservasi = [],
-        bool $cekDriver = true
+        bool $cekDriver = true,
+        ?int $jumlahPenumpang = null
     ) {
         [$mulai, $selesai] = $this->rentang($tanggal, $jamMulai, $jamSelesai, $tanggalSelesai);
 
@@ -82,10 +85,13 @@ class VehicleScheduleService
                     $inner->where('tipe_gage', 'bebas')->orWhere('tipe_gage', $tipeGage)
                 )
             )
-            ->when($cekDriver, fn($q) => $q->where(fn($d) =>
-                $d->whereNull('driver_user_id')
-                  ->orWhereHas('driverUser', fn($u) => $u->where('status_driver', 'tersedia'))
-            ))
+            // Wajib punya akun driver yang sedang tersedia
+            ->when($cekDriver, fn($q) => $q
+                ->whereNotNull('driver_user_id')
+                ->whereHas('driverUser', fn($u) => $u->where('status_driver', 'tersedia'))
+            )
+            // Kapasitas harus cukup untuk seluruh penumpang
+            ->when($jumlahPenumpang !== null, fn($q) => $q->where('kapasitas', '>=', $jumlahPenumpang))
             ->whereNotIn('id_kendaraan', $terpakai)
             ->orderBy('id_kendaraan')
             ->get();
@@ -137,29 +143,23 @@ class VehicleScheduleService
     }
 
     /**
-     * Kendaraan TERKUNCI = punya perjalanan yang sudah dimulai (jam berangkat ≤ sekarang, WIB)
-     * tetapi belum dikonfirmasi selesai (status_perjalanan 'aktif' atau 'selesai_driver').
+     * Kendaraan TERKUNCI = driver sudah menekan "Mulai Perjalanan" (status_perjalanan 'berjalan')
+     * atau sudah menandai selesai tetapi pemohon belum konfirmasi ('selesai_driver').
      * Kendaraan terkunci tidak bisa dibooking / direkomendasikan untuk tanggal & jam mana pun
      * sampai perjalanannya selesai final — mencegah miskomunikasi bila driver terlambat pulang
      * atau belum ada konfirmasi dari pemohon.
      *
-     * Kunci terbuka bila: pemohon mengonfirmasi selesai, dispatcher mengubah jadwal menjadi
-     * selesai/batal, atau jadwal kedaluwarsa ditutup otomatis oleh `jadwal:reset-status`.
+     * Kunci terbuka bila: pemohon mengonfirmasi selesai, dispatcher menandai jadwal selesai,
+     * atau jadwal kedaluwarsa ditutup otomatis oleh `jadwal:reset-status`.
      *
      * @return Collection<int, Jadwal>  key = id_kendaraan
      */
     public function kendaraanTerkunci(): Collection
     {
-        $sekarang = now('Asia/Jakarta');
-
         return Jadwal::with('permintaan.user')
             ->where('status', 'aktif')
-            ->whereIn('status_perjalanan', ['aktif', 'selesai_driver'])
-            ->whereDate('tanggal', '<=', $sekarang->format('Y-m-d'))
+            ->whereIn('status_perjalanan', ['berjalan', 'selesai_driver'])
             ->get()
-            ->filter(fn(Jadwal $j) => Carbon::parse(
-                $j->tanggal->format('Y-m-d') . ' ' . $j->jam_mulai, 'Asia/Jakarta'
-            )->lte($sekarang))
             ->keyBy('id_kendaraan');
     }
 

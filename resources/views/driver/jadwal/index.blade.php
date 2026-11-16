@@ -31,14 +31,10 @@
     $nopol     = $j->kendaraan?->no_polisi         ?? '';
 
     $spColor = match($j->status_perjalanan) {
+        'berjalan'       => 'primary',
         'selesai_driver' => 'warning',
         'selesai_final'  => 'success',
-        default          => 'primary',
-    };
-    $spLabel = match($j->status_perjalanan) {
-        'selesai_driver' => 'Menunggu Konfirmasi',
-        'selesai_final'  => 'Selesai',
-        default          => 'Aktif',
+        default          => 'secondary',
     };
 @endphp
 
@@ -48,7 +44,7 @@
         {{-- Baris 1: Status + Tanggal + Tombol --}}
         <div class="d-flex align-items-start justify-content-between mb-3">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <span class="badge bg-{{ $spColor }}">{{ $spLabel }}</span>
+                @include('partials.badge_perjalanan', ['jadwal' => $j])
                 @if($urgensi)
                     <span class="badge bg-secondary"><i class="bi bi-flag-fill me-1"></i>{{ $urgensi }}</span>
                 @endif
@@ -61,10 +57,13 @@
                     {{ \Illuminate\Support\Str::substr($j->jam_selesai, 0, 5) }}
                 </span>
             </div>
-            <a href="{{ route('driver.jadwal.show', $j->id_jadwal) }}"
-               class="btn btn-outline-primary btn-sm">
-                <i class="bi bi-eye me-1"></i>Detail
-            </a>
+            <div class="d-flex gap-2 flex-wrap justify-content-end">
+                @include('driver.partials.aksi_perjalanan', ['jadwal' => $j])
+                <a href="{{ route('driver.jadwal.show', $j->id_jadwal) }}"
+                   class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-eye me-1"></i>Detail
+                </a>
+            </div>
         </div>
 
         {{-- Baris 2: 4 kolom info --}}

@@ -81,13 +81,48 @@ class PermintaanController extends Controller
             ->with('success', 'Permintaan berhasil disetujui.');
     }
 
+    /** Label jenis alasan penolakan. */
+    public const JENIS_ALASAN_TOLAK = [
+        'kendaraan_penuh' => 'Kendaraan penuh',
+        'kebijakan'       => 'Tidak sesuai kebijakan',
+        'lainnya'         => 'Lainnya',
+    ];
+
     public function reject(Request $request, $id)
     {
+        $request->validate([
+            'jenis_alasan' => 'nullable|in:' . implode(',', array_keys(self::JENIS_ALASAN_TOLAK)),
+            'alasan'       => 'nullable|string|max:1000',
+        ]);
+
         $permintaan = Permintaan::whereIn('status', ['menunggu', 'menunggu_konfirmasi', 'disetujui'])->findOrFail($id);
-        $this->approval->tolak($permintaan, (string) $request->alasan);
+        $jenis      = $request->input('jenis_alasan', 'lainnya');
+        $catatan    = trim((string) $request->alasan);
+
+        // "Kendaraan penuh": pastikan saran jadwal ikut tercantum walau tidak disisipkan lewat form
+        if ($jenis === 'kendaraan_penuh' && ! str_contains($catatan, 'Saran jadwal')) {
+            $catatan = trim($catatan . ' ' . $this->approval->saranUntukDispatcher($permintaan)['teks']);
+        }
+
+        $alasan = self::JENIS_ALASAN_TOLAK[$jenis] . ($catatan !== '' ? '. ' . $catatan : '.');
+        $this->approval->tolak($permintaan, $alasan);
+
+        PermintaanLog::catat(
+            idPermintaan: $permintaan->id_permintaan,
+            userId:       Auth::id(),
+            tipe:         'tolak',
+            keterangan:   $alasan,
+            dataBaru:     ['jenis_alasan' => $jenis],
+        );
 
         return redirect()->route('admin.permintaan.index')
             ->with('success', 'Permintaan berhasil ditolak.');
+    }
+
+    /** JSON saran jadwal (alasan tolak "Kendaraan penuh"), dimuat saat dispatcher memilih alasan tersebut. */
+    public function saranJadwal($id)
+    {
+        return response()->json($this->approval->saranUntukDispatcher(Permintaan::findOrFail($id)));
     }
 
     public function reschedule(Request $request, $id)
@@ -98,6 +133,13 @@ class PermintaanController extends Controller
         ]);
 
         $permintaan = Permintaan::whereIn('status', ['menunggu_konfirmasi', 'disetujui'])->findOrFail($id);
+
+        // Reschedule hanya selama perjalanan belum dimulai
+        $jadwalAktif = $permintaan->jadwal()->where('status', 'aktif')->first();
+        if ($jadwalAktif && ! $jadwalAktif->belumBerangkat()) {
+            return redirect()->route('admin.permintaan.show', $id)
+                ->with('error', \App\Models\Jadwal::PESAN_SUDAH_BERANGKAT);
+        }
 
         $dataLama = ['tanggal_berangkat' => $permintaan->tanggal_berangkat->format('Y-m-d')];
 
@@ -159,7 +201,33 @@ class PermintaanController extends Controller
             route('user.permintaan.show', $permintaan->id_permintaan)
         );
 
+        // Prioritas menentukan urutan antrean → proses ulang alokasi kendaraan
+        try { $this->approval->prosesAntrian(); } catch (\Throwable) {}
+
         return redirect()->route('admin.permintaan.show', $id)
             ->with('success', "Prioritas diubah ke \"{$labelMap[$prioritasBaru]}\".");
+    }
+
+    /**
+     * Alihkan kendaraan dari booking berprioritas lebih rendah ($jadwalId, belum berangkat)
+     * ke permintaan ini (prioritas lebih tinggi). Validasi & aksi ada di ApprovalService.
+     */
+    public function alihkan($id, $jadwalId)
+    {
+        $permintaan = Permintaan::findOrFail($id);
+        $jadwal     = \App\Models\Jadwal::findOrFail($jadwalId);
+        $noPolisi   = $jadwal->kendaraan?->no_polisi;
+
+        $error = $this->approval->alihkanKendaraan($permintaan, $jadwal, Auth::id());
+        if ($error) {
+            return redirect()->route('admin.permintaan.show', $id)->with('error', $error);
+        }
+
+        $baru = $permintaan->fresh('jadwal.kendaraan');
+        $pesan = $baru->jadwal && $baru->jadwal->status === 'aktif'
+            ? "Kendaraan dialihkan. Permintaan ini kini terjadwal dengan {$baru->jadwal->kendaraan?->no_polisi}."
+            : "Jadwal {$noPolisi} dilepas, namun permintaan ini belum mendapat kendaraan (ada antrean berprioritas lebih tinggi).";
+
+        return redirect()->route('admin.permintaan.show', $id)->with('success', $pesan);
     }
 }

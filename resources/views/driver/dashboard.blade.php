@@ -81,7 +81,12 @@
                         </div>
                         <div class="col-md-5 text-end">
                             <div class="fw-semibold">{{ $j->jam_mulai }} – {{ $j->jam_selesai }}</div>
-                            <span class="badge bg-{{ $j->status === 'aktif' ? 'success' : 'secondary' }}">{{ ucfirst($j->status) }}</span>
+                            @if($j->status === 'aktif')
+                                <div class="mb-2">@include('partials.badge_perjalanan', ['jadwal' => $j])</div>
+                                @include('driver.partials.aksi_perjalanan', ['jadwal' => $j])
+                            @else
+                                <span class="badge bg-secondary">{{ ucfirst($j->status) }}</span>
+                            @endif
                         </div>
                     </div>
                 </div>

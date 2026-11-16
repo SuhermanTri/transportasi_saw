@@ -90,10 +90,25 @@
                                class="btn btn-outline-secondary btn-sm" title="Lihat">
                                 <i class="bi bi-eye"></i>
                             </a>
+                            {{-- Reschedule / alihkan hanya selama belum berangkat --}}
+                            @if($kb->jadwal?->belumBerangkat())
                             <a href="{{ route('admin.penjadwalan.edit', $kb->jadwal->id_jadwal) }}"
                                class="btn btn-outline-warning btn-sm" title="Reschedule">
                                 <i class="bi bi-arrow-repeat"></i>
                             </a>
+                            <form method="POST" class="d-inline"
+                                  action="{{ route('admin.permintaan.alihkan', [$permintaan->id_permintaan, $kb->jadwal->id_jadwal]) }}"
+                                  onsubmit="return confirm('Alihkan kendaraan {{ $kb->jadwal->kendaraan?->no_polisi }} dari {{ $kb->user->nama ?? 'pemohon' }} ke permintaan ini? Pemohon tersebut akan diberi tahu dan kembali ke antrean.')">
+                                @csrf
+                                <button class="btn btn-danger btn-sm" title="Alihkan kendaraan ke permintaan ini">
+                                    <i class="bi bi-arrow-left-right me-1"></i>Alihkan Kendaraan
+                                </button>
+                            </form>
+                            @elseif($kb->jadwal)
+                            <button class="btn btn-outline-secondary btn-sm" disabled title="Perjalanan sudah dimulai">
+                                <i class="bi bi-lock"></i>
+                            </button>
+                            @endif
                         </div>
                     </div>
                     @endforeach
@@ -178,6 +193,12 @@
                         <label class="text-muted small">Waktu</label>
                         <div class="fw-semibold">{{ $permintaan->jadwal->jam_mulai }} – {{ $permintaan->jadwal->jam_selesai }}</div>
                     </div>
+                    @if($permintaan->jadwal->status === 'aktif')
+                    <div class="col-12">
+                        <label class="text-muted small">Status Perjalanan</label>
+                        <div>@include('partials.badge_perjalanan', ['jadwal' => $permintaan->jadwal])</div>
+                    </div>
+                    @endif
                 </div>
                 @endif
 
@@ -196,10 +217,7 @@
                 <div class="collapse mt-3" id="formTolak">
                     <form method="POST" action="{{ route('admin.permintaan.reject', $permintaan->id_permintaan) }}">
                         @csrf
-                        <div class="mb-2">
-                            <label class="form-label fw-semibold">Alasan Penolakan</label>
-                            <textarea name="alasan" class="form-control" rows="3" placeholder="Tuliskan alasan penolakan..."></textarea>
-                        </div>
+                        @include('admin.permintaan._form_tolak', ['urlSaran' => route('admin.permintaan.saran-jadwal', $permintaan->id_permintaan, false)])
                         <button class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>Konfirmasi Tolak</button>
                     </form>
                 </div>
@@ -251,10 +269,7 @@
                     <div class="card card-body border-danger">
                         <form method="POST" action="{{ route('admin.permintaan.reject', $permintaan->id_permintaan) }}">
                             @csrf
-                            <div class="mb-2">
-                                <label class="form-label fw-semibold">Alasan Penolakan</label>
-                                <textarea name="alasan" class="form-control" rows="2" placeholder="Tuliskan alasan penolakan..."></textarea>
-                            </div>
+                            @include('admin.permintaan._form_tolak', ['urlSaran' => route('admin.permintaan.saran-jadwal', $permintaan->id_permintaan, false)])
                             <button class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>Konfirmasi Tolak</button>
                         </form>
                     </div>

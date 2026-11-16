@@ -157,6 +157,11 @@
                             </td>
                             <td>
                                 {!! $p->statusLabel !!}
+                                @if($p->status === 'berjalan' && $p->jadwal?->waktu_berangkat)
+                                    <div class="small text-primary mt-1">
+                                        <i class="bi bi-car-front-fill me-1"></i>Sedang dalam perjalanan sejak {{ $p->jadwal->waktu_berangkat->format('H:i') }}
+                                    </div>
+                                @endif
                                 @if($p->status === 'menunggu_konfirmasi')
                                 <div class="d-flex gap-1 mt-1">
                                     <a href="{{ route('user.permintaan.reschedule', $p->id_permintaan) }}" class="btn btn-warning btn-sm py-0 px-2" title="Reschedule">
@@ -190,6 +195,11 @@
                     <div class="fw-semibold">{{ $j->kendaraan->nama_kendaraan ?? '-' }}</div>
                     <div class="text-muted small">{{ $j->permintaan->tujuan ?? '-' }}</div>
                     <div class="text-muted small">{{ $j->jam_mulai }} – {{ $j->jam_selesai }}</div>
+                    @if($j->status_perjalanan === 'berjalan')
+                        <span class="badge bg-primary mt-1">
+                            <i class="bi bi-car-front-fill me-1"></i>Sedang dalam perjalanan sejak {{ $j->waktu_berangkat?->format('H:i') ?? '-' }} WIB
+                        </span>
+                    @endif
                 </div>
                 @empty
                 <div class="text-center text-muted py-4">Tidak ada jadwal hari ini</div>

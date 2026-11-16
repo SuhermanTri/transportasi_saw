@@ -53,7 +53,7 @@
                                 <span class="text-muted">—</span>
                             @endif
                         </td>
-                        <td class="fw-semibold">{{ $p->user->nama ?? '-' }}</td>
+                        <td class="fw-semibold">{{ $p->user->nama ?? '-' }} @if(in_array($p->priority, ['high', 'urgent'])) {!! $p->priorityLabel !!} @endif</td>
                         <td class="small text-muted">{{ $p->user->jabatan ?? '-' }}</td>
                         <td>{{ $p->tujuan }}</td>
                         <td>
@@ -108,7 +108,10 @@
                     @forelse($jadwal as $i => $j)
                     <tr>
                         <td>{{ $i + 1 }}</td>
-                        <td>{{ $j->permintaan->user->nama ?? '-' }}</td>
+                        <td>
+                            {{ $j->permintaan->user->nama ?? '-' }}
+                            @if(in_array($j->permintaan?->priority, ['high', 'urgent'])) {!! $j->permintaan->priorityLabel !!} @endif
+                        </td>
                         <td>{{ $j->permintaan->tujuan ?? '-' }}</td>
                         <td>
                             <div>{{ $j->kendaraan->nama_kendaraan ?? '-' }}</div>
@@ -120,9 +123,14 @@
                             <span class="badge bg-{{ $j->status === 'aktif' ? 'success' : ($j->status === 'selesai' ? 'secondary' : 'danger') }}">
                                 {{ ucfirst($j->status) }}
                             </span>
+                            @if($j->status === 'aktif')
+                                <div class="mt-1">@include('partials.badge_perjalanan', ['jadwal' => $j])</div>
+                            @endif
                         </td>
                         <td class="text-nowrap">
                             <a href="{{ route('admin.penjadwalan.edit', $j->id_jadwal) }}" class="btn btn-warning btn-sm"><i class="bi bi-pencil"></i></a>
+                            {{-- Batalkan / alihkan hanya selama belum berangkat --}}
+                            @if($j->belumBerangkat())
                             <button class="btn btn-danger btn-sm"
                                     data-bs-toggle="modal" data-bs-target="#modalHapusJadwal"
                                     data-action="{{ route('admin.penjadwalan.destroy', $j->id_jadwal) }}"
@@ -130,6 +138,12 @@
                                     data-tujuan="{{ $j->permintaan->tujuan ?? '' }}">
                                 <i class="bi bi-trash"></i>
                             </button>
+                            @else
+                            <button class="btn btn-outline-secondary btn-sm" disabled
+                                    title="Perjalanan sudah dimulai — tidak bisa dibatalkan atau dialihkan">
+                                <i class="bi bi-lock"></i>
+                            </button>
+                            @endif
                         </td>
                     </tr>
                     @empty

@@ -19,23 +19,11 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12">
-                @php
-                    $spBadge = match($jadwal->status_perjalanan) {
-                        'selesai_driver' => 'warning',
-                        'selesai_final'  => 'success',
-                        default          => 'primary',
-                    };
-                    $spLabel = match($jadwal->status_perjalanan) {
-                        'selesai_driver' => 'Menunggu Konfirmasi Pemohon',
-                        'selesai_final'  => 'Selesai',
-                        default          => 'Dalam Perjalanan',
-                    };
-                @endphp
                 <div class="alert alert-info">
                     <div class="fw-semibold fs-5">{{ $jadwal->permintaan->tujuan ?? '-' }}</div>
                     <div class="mt-1">
-                        <span class="badge bg-{{ $spBadge }} me-2">{{ $spLabel }}</span>
-                        {{ \Carbon\Carbon::parse($jadwal->tanggal)->format('d M Y') }}
+                        @include('partials.badge_perjalanan', ['jadwal' => $jadwal])
+                        <span class="ms-1">{{ \Carbon\Carbon::parse($jadwal->tanggal)->format('d M Y') }}</span>
                     </div>
                 </div>
             </div>
@@ -93,16 +81,18 @@
         </div>
 
         {{-- Tombol selesai tugas --}}
-        @if($jadwal->status_perjalanan === 'aktif' && $jadwal->status === 'aktif')
+        @if($jadwal->status === 'aktif' && in_array($jadwal->status_perjalanan, ['aktif', 'berjalan']))
         <hr>
-        <form method="POST" action="{{ route('driver.jadwal.selesai', $jadwal->id_jadwal) }}"
-              onsubmit="return confirm('Tandai perjalanan ini sebagai selesai?')">
-            @csrf
-            <button class="btn btn-success">
-                <i class="bi bi-check2-circle me-1"></i>Tandai Perjalanan Selesai
-            </button>
-            <span class="text-muted small ms-2">Pemohon akan diminta konfirmasi setelah ini.</span>
-        </form>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            @include('driver.partials.aksi_perjalanan', ['jadwal' => $jadwal, 'ukuran' => ''])
+            <span class="text-muted small">
+                @if($jadwal->status_perjalanan === 'aktif')
+                    Tekan saat berangkat — pemohon dan dispatcher akan diberi tahu.
+                @else
+                    Berangkat pukul {{ $jadwal->waktu_berangkat?->format('H:i') }} WIB. Tekan Selesai setelah tiba; pemohon akan diminta konfirmasi.
+                @endif
+            </span>
+        </div>
         @elseif($jadwal->status_perjalanan === 'selesai_driver')
         <hr>
         <div class="alert alert-warning py-2">

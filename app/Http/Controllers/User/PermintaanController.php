@@ -29,11 +29,50 @@ class PermintaanController extends Controller
         return view('user.permintaan.index', compact('permintaan'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $urgensiList = MasterUrgensi::orderByDesc('nilai_saw')->get();
         $jendela     = $this->jendelaPengajuan();
-        return view('user.permintaan.create', compact('urgensiList', 'jendela'));
+
+        // Isian otomatis dari "Ajukan Ulang dengan Jadwal Ini" (query string)
+        $prefill = $request->only([
+            'tujuan', 'urgensi_id', 'jumlah_penumpang', 'keterangan',
+            'tanggal_berangkat', 'jam_berangkat', 'jam_kembali',
+        ]);
+
+        return view('user.permintaan.create', compact('urgensiList', 'jendela', 'prefill'));
+    }
+
+    /**
+     * Cek ketersediaan kendaraan saat user mengisi form (TIDAK memblokir pengajuan).
+     * Bila penuh, kembalikan saran jam lain di hari yang sama & tanggal lain dalam jendela pengajuan.
+     */
+    public function cekKetersediaan(Request $request)
+    {
+        $data = $request->validate([
+            'tanggal'          => 'required|date',
+            'jam_berangkat'    => 'required|date_format:H:i',
+            'jam_kembali'      => 'nullable|date_format:H:i',
+            'jumlah_penumpang' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $penumpang = isset($data['jumlah_penumpang']) ? (int) $data['jumlah_penumpang'] : null;
+        $tanggal   = \Carbon\Carbon::parse($data['tanggal'])->format('Y-m-d');
+
+        if ($this->approval->adaKendaraan($tanggal, $data['jam_berangkat'], $data['jam_kembali'] ?? null, $penumpang)) {
+            return response()->json(['tersedia' => true, 'pesan' => 'Kendaraan tersedia pada jam ini.', 'saran' => []]);
+        }
+
+        $saran = $this->approval->saranJadwal(
+            $tanggal, $data['jam_berangkat'], $data['jam_kembali'] ?? null, $penumpang,
+            array_merge([$tanggal], $this->tanggalPengajuanTerbuka())
+        );
+
+        return response()->json([
+            'tersedia' => false,
+            'pesan'    => 'Semua kendaraan pada jam ini sudah dibooking. Permintaan tetap dapat diajukan dan masuk antrean prioritas.',
+            'saran'    => $saran,
+        ]);
     }
 
     public function store(Request $request)
@@ -76,7 +115,27 @@ class PermintaanController extends Controller
         $permintaan = Permintaan::with(['urgensi', 'jadwal.kendaraan.driverUser', 'jadwal.penilaian', 'hasilSaw'])
             ->where('id_user', Auth::id())
             ->findOrFail($id);
-        return view('user.permintaan.show', compact('permintaan'));
+
+        // Saran jadwal untuk permintaan yang ditolak (ajukan ulang) atau belum dapat kendaraan (reschedule)
+        $saran = [];
+        if (in_array($permintaan->status, ['ditolak', 'menunggu_konfirmasi'])) {
+            $tanggalAsal = $permintaan->tanggal_berangkat->format('Y-m-d');
+            $kandidat    = $this->tanggalPengajuanTerbuka();
+            // Reschedule boleh mempertahankan tanggal asal (lihat aturanTanggalBerangkat)
+            if ($permintaan->status === 'menunggu_konfirmasi' && $tanggalAsal >= now(self::ZONA_WAKTU)->format('Y-m-d')) {
+                array_unshift($kandidat, $tanggalAsal);
+            }
+            try {
+                $saran = $this->approval->saranJadwal(
+                    $tanggalAsal, (string) ($permintaan->jam_berangkat ?? '08:00'), $permintaan->jam_kembali,
+                    $permintaan->jumlah_penumpang ? (int) $permintaan->jumlah_penumpang : null,
+                    $kandidat,
+                    $permintaan->status === 'menunggu_konfirmasi'   // slot asal diketahui penuh
+                );
+            } catch (\Throwable) {}
+        }
+
+        return view('user.permintaan.show', compact('permintaan', 'saran'));
     }
 
     public function edit($id)
@@ -177,6 +236,16 @@ class PermintaanController extends Controller
         ];
     }
 
+    /** Tanggal yang saat ini boleh diajukan: hari ini, dan besok bila jendela H-1 sedang dibuka. */
+    private function tanggalPengajuanTerbuka(): array
+    {
+        $j = $this->jendelaPengajuan();
+        return array_values(array_filter([
+            $j['hariIni']->format('Y-m-d'),
+            $j['besokDibuka'] ? $j['besok']->format('Y-m-d') : null,
+        ]));
+    }
+
     /**
      * Aturan tanggal berangkat untuk pengajuan request oleh user.
      * - Tanggal hari ini: selalu diterima (tetap melalui urgensi, AHP-SAW, ketersediaan & persetujuan dispatcher).
@@ -219,6 +288,29 @@ class PermintaanController extends Controller
         ];
     }
 
+    /**
+     * Cancel / reschedule oleh user hanya boleh selama perjalanan belum dimulai.
+     * Mengembalikan redirect berisi pesan error bila perjalanan sudah berjalan, null bila boleh.
+     */
+    private function tolakJikaSudahBerangkat($id)
+    {
+        $permintaan = Permintaan::with('jadwal')
+            ->where('id_user', Auth::id())
+            ->find($id);
+
+        $sudahBerangkat = $permintaan && (
+            $permintaan->status === 'berjalan'
+            || ($permintaan->jadwal && $permintaan->jadwal->status === 'aktif' && ! $permintaan->jadwal->belumBerangkat())
+        );
+
+        if (! $sudahBerangkat) {
+            return null;
+        }
+
+        return redirect()->route('user.permintaan.show', $id)
+            ->with('error', \App\Models\Jadwal::PESAN_SUDAH_BERANGKAT);
+    }
+
     private function runSawSilently(): void
     {
         try {
@@ -234,6 +326,10 @@ class PermintaanController extends Controller
 
     public function cancelForm($id)
     {
+        if ($tolak = $this->tolakJikaSudahBerangkat($id)) {
+            return $tolak;
+        }
+
         $permintaan = Permintaan::with('jadwal.kendaraan')
             ->where('id_user', Auth::id())
             ->whereIn('status', ['terjadwal', 'menunggu_konfirmasi'])
@@ -244,6 +340,10 @@ class PermintaanController extends Controller
 
     public function cancelStore(Request $request, $id)
     {
+        if ($tolak = $this->tolakJikaSudahBerangkat($id)) {
+            return $tolak;
+        }
+
         $request->validate([
             'alasan_batal' => 'required|string|max:500',
         ], [
@@ -321,28 +421,40 @@ class PermintaanController extends Controller
 
     public function rescheduleForm($id)
     {
+        if ($tolak = $this->tolakJikaSudahBerangkat($id)) {
+            return $tolak;
+        }
+
         $permintaan = Permintaan::where('id_user', Auth::id())
             ->whereIn('status', ['disetujui', 'terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
+        $jendela = $this->jendelaPengajuan();
 
-        return view('user.permintaan.reschedule', compact('permintaan'));
+        // Isian otomatis dari tombol "Reschedule ke saran ini"
+        $prefill = request()->only(['tanggal_berangkat', 'jam_berangkat', 'jam_kembali']);
+
+        return view('user.permintaan.reschedule', compact('permintaan', 'jendela', 'prefill'));
     }
 
     public function rescheduleStore(Request $request, $id)
     {
+        if ($tolak = $this->tolakJikaSudahBerangkat($id)) {
+            return $tolak;
+        }
+
         $permintaan = Permintaan::with('jadwal.kendaraan')
             ->where('id_user', Auth::id())
             ->whereIn('status', ['disetujui', 'terjadwal', 'menunggu_konfirmasi'])
             ->findOrFail($id);
 
         $data = $request->validate([
-            'tanggal_berangkat'  => ['required', 'date', 'after_or_equal:today'],
+            // Sama dengan pengajuan: hari ini kapan saja; besok hanya 08:00–16:00 WIB
+            'tanggal_berangkat'  => $this->aturanTanggalBerangkat($permintaan->tanggal_berangkat->format('Y-m-d')),
             'jam_berangkat'      => 'required|date_format:H:i',
             'tanggal_kembali'    => 'nullable|date|after_or_equal:tanggal_berangkat',
             'jam_kembali'        => 'nullable|date_format:H:i',
             'alasan_reschedule'  => 'required|string|max:500',
         ], [
-            'tanggal_berangkat.after_or_equal' => 'Tanggal berangkat tidak boleh di masa lalu.',
             'alasan_reschedule.required'       => 'Alasan reschedule wajib diisi.',
         ]);
 

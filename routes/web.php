@@ -49,6 +49,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:dispatcher'])-
         Route::post('/{id}/reschedule',  [Admin\PermintaanController::class, 'reschedule'])->name('reschedule');
         // Fitur 3: ubah priority
         Route::post('/{id}/priority',    [Admin\PermintaanController::class, 'updatePriority'])->name('priority');
+        // Saran jadwal untuk alasan tolak "Kendaraan penuh"
+        Route::get('/{id}/saran-jadwal', [Admin\PermintaanController::class, 'saranJadwal'])->name('saran-jadwal');
+        // Alihkan kendaraan dari booking berprioritas lebih rendah (belum berangkat)
+        Route::post('/{id}/alihkan/{jadwalId}', [Admin\PermintaanController::class, 'alihkan'])->name('alihkan');
     });
 
     // Kendaraan
@@ -110,6 +114,9 @@ Route::prefix('user')->name('user.')->middleware(['auth', 'role:user'])->group(f
     Route::prefix('permintaan')->name('permintaan.')->group(function () {
         Route::get('/',          [User\PermintaanController::class, 'index'])->name('index');
         Route::get('/create',    [User\PermintaanController::class, 'create'])->name('create');
+        // Cek ketersediaan kendaraan saat mengisi form (harus sebelum route /{id})
+        Route::get('/cek-ketersediaan', [User\PermintaanController::class, 'cekKetersediaan'])
+            ->middleware('throttle:60,1')->name('cek-ketersediaan');
         Route::post('/',         [User\PermintaanController::class, 'store'])->name('store');
         Route::get('/{id}',      [User\PermintaanController::class, 'show'])->name('show');
         Route::get('/{id}/edit', [User\PermintaanController::class, 'edit'])->name('edit');
@@ -136,6 +143,7 @@ Route::prefix('driver')->name('driver.')->middleware(['auth', 'role:driver'])->g
     Route::get('/dashboard',    [Driver\DashboardController::class, 'index'])->name('dashboard');
     Route::get('/jadwal',       [Driver\JadwalController::class, 'jadwalSaya'])->name('jadwal');
     Route::get('/jadwal/{id}',  [Driver\JadwalController::class, 'show'])->name('jadwal.show');
+    Route::post('/jadwal/{id}/mulai',   [Driver\JadwalController::class, 'mulai'])->name('jadwal.mulai');
     Route::post('/jadwal/{id}/selesai', [Driver\JadwalController::class, 'selesai'])->name('jadwal.selesai');
     Route::get('/riwayat',      [Driver\JadwalController::class, 'riwayat'])->name('riwayat');
     Route::post('/status',      [Driver\JadwalController::class, 'updateStatus'])->name('status.update');

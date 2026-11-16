@@ -29,6 +29,7 @@ class PermintaanLog extends Model
         'approval'            => ['color' => 'success',   'icon' => 'bi-check-circle-fill', 'label' => 'Disetujui'],
         'tolak'               => ['color' => 'danger',    'icon' => 'bi-x-circle-fill',     'label' => 'Ditolak'],
         'driver_tidak_tersedia' => ['color' => 'warning', 'icon' => 'bi-person-x-fill',     'label' => 'Driver Tidak Tersedia (otomatis)'],
+        'mulai_perjalanan'    => ['color' => 'primary',   'icon' => 'bi-car-front-fill',    'label' => 'Mulai Perjalanan'],
     ];
 
     /* ── Relations ───────────────────────────────────────────── */

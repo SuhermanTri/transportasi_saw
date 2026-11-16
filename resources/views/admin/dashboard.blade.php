@@ -134,9 +134,18 @@
                             <div class="text-muted small">{{ $j->permintaan->tujuan ?? '-' }}</div>
                             <div class="text-muted small">{{ $j->jam_mulai }} - {{ $j->jam_selesai }}</div>
                         </div>
-                        <span class="badge bg-{{ $j->status === 'aktif' ? 'success' : ($j->status === 'selesai' ? 'secondary' : 'danger') }} align-self-start">
-                            {{ ucfirst($j->status) }}
-                        </span>
+                        <div class="text-end align-self-start">
+                            @if($j->status === 'aktif')
+                                {{-- Monitor perjalanan: belum berangkat / berjalan / menunggu konfirmasi / selesai --}}
+                                <div class="d-flex flex-column align-items-end gap-1">
+                                    @include('partials.badge_perjalanan', ['jadwal' => $j])
+                                </div>
+                            @else
+                                <span class="badge bg-{{ $j->status === 'selesai' ? 'secondary' : 'danger' }}">
+                                    {{ ucfirst($j->status) }}
+                                </span>
+                            @endif
+                        </div>
                     </div>
                 </div>
                 @empty

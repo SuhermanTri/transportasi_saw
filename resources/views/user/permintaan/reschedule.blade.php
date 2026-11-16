@@ -76,15 +76,17 @@
                     <label class="form-label fw-medium">Tanggal Berangkat Baru <span class="text-danger">*</span></label>
                     <input type="date" name="tanggal_berangkat"
                            class="form-control @error('tanggal_berangkat') is-invalid @enderror"
-                           value="{{ old('tanggal_berangkat', $permintaan->tanggal_berangkat->format('Y-m-d')) }}"
-                           min="{{ today()->format('Y-m-d') }}" required>
+                           value="{{ old('tanggal_berangkat', $prefill['tanggal_berangkat'] ?? $permintaan->tanggal_berangkat->format('Y-m-d')) }}"
+                           min="{{ $jendela['hariIni']->format('Y-m-d') }}"
+                           max="{{ ($jendela['besokDibuka'] || $permintaan->tanggal_berangkat->isSameDay($jendela['besok']) ? $jendela['besok'] : $jendela['hariIni'])->format('Y-m-d') }}" required>
                     @error('tanggal_berangkat')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    @include('user.permintaan._info_jendela')
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Jam Berangkat <span class="text-danger">*</span></label>
                     <input type="time" name="jam_berangkat"
                            class="form-control @error('jam_berangkat') is-invalid @enderror"
-                           value="{{ old('jam_berangkat', $permintaan->jam_berangkat) }}" required>
+                           value="{{ old('jam_berangkat', $prefill['jam_berangkat'] ?? substr((string) $permintaan->jam_berangkat, 0, 5)) }}" required>
                     @error('jam_berangkat')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 
@@ -99,7 +101,7 @@
                     <label class="form-label fw-medium">Jam Kembali</label>
                     <input type="time" name="jam_kembali"
                            class="form-control @error('jam_kembali') is-invalid @enderror"
-                           value="{{ old('jam_kembali', $permintaan->jam_kembali) }}">
+                           value="{{ old('jam_kembali', $prefill['jam_kembali'] ?? ($permintaan->jam_kembali ? substr((string) $permintaan->jam_kembali, 0, 5) : '')) }}">
                     @error('jam_kembali')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 

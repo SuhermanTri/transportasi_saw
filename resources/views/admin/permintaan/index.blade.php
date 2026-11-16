@@ -46,7 +46,7 @@
                                 <span class="text-muted">—</span>
                             @endif
                         </td>
-                        <td>{{ $p->user->nama ?? '-' }}</td>
+                        <td>{{ $p->user->nama ?? '-' }} @if(in_array($p->priority, ['high', 'urgent'])) {!! $p->priorityLabel !!} @endif</td>
                         <td class="small text-muted">{{ $p->user->jabatan ?? '-' }}</td>
                         <td>{{ $p->tujuan }}</td>
                         <td>
@@ -117,10 +117,7 @@
                 @csrf
                 <div class="modal-body">
                     <p>Tolak permintaan: <strong id="tolakNama"></strong>?</p>
-                    <div class="mb-3">
-                        <label class="form-label">Alasan penolakan (opsional)</label>
-                        <textarea name="alasan" class="form-control" rows="3" placeholder="Tuliskan alasan penolakan..."></textarea>
-                    </div>
+                    @include('admin.permintaan._form_tolak', ['urlSaran' => ''])
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
@@ -139,6 +136,13 @@ document.getElementById('modalTolak').addEventListener('show.bs.modal', function
     const nama = btn.dataset.nama;
     document.getElementById('tolakNama').textContent = nama;
     document.getElementById('formTolak').action = '/admin/permintaan/' + id + '/reject';
+
+    // Reset isi form & arahkan URL saran ke permintaan ini
+    const wadah = document.querySelector('#formTolak .form-tolak');
+    wadah.dataset.urlSaran = '/admin/permintaan/' + id + '/saran-jadwal';
+    wadah.querySelector('.pilih-jenis-alasan').value = '';
+    wadah.querySelector('textarea[name="alasan"]').value = '';
+    wadah.querySelector('.kotak-saran').classList.add('d-none');
 });
 </script>
 @endpush

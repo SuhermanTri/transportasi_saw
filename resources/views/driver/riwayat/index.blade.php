@@ -33,11 +33,13 @@
                                 $spColor = match($r->status_perjalanan) {
                                     'selesai_final'  => 'success',
                                     'selesai_driver' => 'warning',
+                                    'berjalan'       => 'info text-dark',
                                     default          => 'primary',
                                 };
                                 $spText = match($r->status_perjalanan) {
                                     'selesai_final'  => 'Selesai',
                                     'selesai_driver' => 'Tunggu Konfirmasi',
+                                    'berjalan'       => 'Sedang Berjalan',
                                     default          => 'Aktif',
                                 };
                             @endphp

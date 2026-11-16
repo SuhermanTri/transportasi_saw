@@ -65,7 +65,7 @@
             } catch (e) {
                 if (nomor === permintaanTerakhir) tampilkan([], 'Pencarian alamat sedang tidak tersedia — ketik secara manual.');
             }
-        }, 350);
+        }, 500); // jeda ketik — Nominatim membatasi 1 pencarian per detik
     });
 
     input.addEventListener('keydown', e => {

@@ -40,7 +40,15 @@
                         <td>{{ $i + 1 }}</td>
                         <td class="fw-semibold">{{ $k->nama_kendaraan }}</td>
                         <td><span class="badge bg-secondary">{{ $k->no_polisi }}</span></td>
-                        <td>{{ $k->nama_driver ?? '-' }}</td>
+                        <td>
+                            {{ $k->nama_driver ?? '-' }}
+                            {{-- Tanpa akun driver → tidak akan dialokasikan --}}
+                            @if(! $k->driver_user_id)
+                                <span class="badge bg-warning text-dark ms-1" title="Belum terhubung ke akun driver — kendaraan tidak akan dialokasikan">
+                                    <i class="bi bi-person-x me-1"></i>Tanpa Driver
+                                </span>
+                            @endif
+                        </td>
                         <td>{{ $k->kapasitas }} org</td>
                         <td>
                             <span class="badge bg-{{ $k->status === 'tersedia' ? 'success' : 'danger' }}">

@@ -29,6 +29,8 @@ class PenjadwalanController extends Controller
         $permintaanSiap = Permintaan::with(['user', 'urgensi', 'hasilSaw'])
             ->whereIn('status', ['disetujui', 'menunggu_konfirmasi'])
             ->whereDoesntHave('jadwal', fn($q) => $q->where('status', 'aktif'))
+            // Sama dengan urutan antrean: prioritas dispatcher dulu, lalu nilai SAW
+            ->orderByRaw("FIELD(COALESCE(priority, 'normal'), 'urgent', 'high', 'normal')")
             ->orderByRaw('(SELECT nilai_akhir FROM hasil_saw WHERE hasil_saw.id_permintaan = permintaan.id_permintaan) DESC')
             ->get();
 
@@ -40,6 +42,8 @@ class PenjadwalanController extends Controller
         $permintaan = Permintaan::with(['user', 'urgensi', 'hasilSaw'])
             ->whereIn('status', ['disetujui', 'menunggu_konfirmasi'])
             ->whereDoesntHave('jadwal', fn($q) => $q->where('status', 'aktif'))
+            // Sama dengan urutan antrean: prioritas dispatcher dulu, lalu nilai SAW
+            ->orderByRaw("FIELD(COALESCE(priority, 'normal'), 'urgent', 'high', 'normal')")
             ->orderByRaw('(SELECT nilai_akhir FROM hasil_saw WHERE hasil_saw.id_permintaan = permintaan.id_permintaan) DESC')
             ->get();
 
@@ -62,8 +66,10 @@ class PenjadwalanController extends Controller
         $gageAktif = $this->gage->isGageAktif($jamMulai, $jamSelesai);
         $tipeGage  = $gageAktif ? $this->gage->tipeUntukTanggal($p->tanggal_berangkat) : null;
 
+        // Hanya kendaraan ber-driver tersedia & berkapasitas cukup
         $kendaraan = $this->schedule->kendaraanTersedia(
-            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $p->tanggal_kembali?->format('Y-m-d')
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $p->tanggal_kembali?->format('Y-m-d'),
+            [], true, (int) $p->jumlah_penumpang ?: null
         );
 
         return response()->json([
@@ -94,13 +100,25 @@ class PenjadwalanController extends Controller
         if ($kunci) {
             $statusTrip = $kunci->status_perjalanan === 'selesai_driver'
                 ? 'driver sudah menandai selesai, menunggu konfirmasi pemohon'
-                : 'perjalanan belum ditandai selesai oleh driver';
+                : 'sedang dalam perjalanan sejak ' . ($kunci->waktu_berangkat?->format('H:i') ?? '-') . ' WIB';
             return back()->withInput()
                 ->with('error', "Kendaraan {$kendaraan->no_polisi} terkunci: masih dalam perjalanan ke \"{$kunci->permintaan?->tujuan}\" ({$statusTrip}). Pilih kendaraan lain.");
         }
 
+        // Kendaraan tanpa akun driver tidak boleh dialokasikan
+        if (! $kendaraan->driver_user_id || ! $kendaraan->driverUser) {
+            return back()->withInput()
+                ->with('error', "Kendaraan {$kendaraan->no_polisi} belum memiliki driver. Pilih kendaraan lain.");
+        }
+
+        // Kapasitas kendaraan harus cukup untuk seluruh penumpang
+        if ($permintaan->jumlah_penumpang && $kendaraan->kapasitas < $permintaan->jumlah_penumpang) {
+            return back()->withInput()
+                ->with('error', "Kapasitas kendaraan {$kendaraan->no_polisi} ({$kendaraan->kapasitas} orang) kurang dari jumlah penumpang ({$permintaan->jumlah_penumpang} orang). Pilih kendaraan lain.");
+        }
+
         // Driver kendaraan sedang tidak tersedia (cuti/sakit/dinas luar/istirahat)
-        if ($kendaraan->driverUser && $kendaraan->driverUser->status_driver !== 'tersedia') {
+        if ($kendaraan->driverUser->status_driver !== 'tersedia') {
             return back()->withInput()
                 ->with('error', "Driver {$kendaraan->driverUser->nama} sedang tidak tersedia. Pilih kendaraan lain.");
         }
@@ -173,6 +191,12 @@ class PenjadwalanController extends Controller
         ]);
 
         $jadwal = Jadwal::with('permintaan')->findOrFail($id);
+
+        // Pembatalan hanya boleh selama belum berangkat (menandai selesai tetap boleh)
+        if ($request->status === 'batal' && ! $jadwal->belumBerangkat()) {
+            return back()->with('error', Jadwal::PESAN_SUDAH_BERANGKAT);
+        }
+
         $jadwal->update(['status' => $request->status]);
 
         if (in_array($request->status, ['selesai', 'batal'])) {
@@ -217,6 +241,11 @@ class PenjadwalanController extends Controller
     {
         $jadwal     = Jadwal::with('permintaan')->findOrFail($id);
         $permintaan = $jadwal->permintaan;
+
+        // Hapus / alihkan / jadwalkan ulang hanya selama belum berangkat
+        if (! $jadwal->belumBerangkat()) {
+            return back()->with('error', Jadwal::PESAN_SUDAH_BERANGKAT);
+        }
 
         Kendaraan::where('id_kendaraan', $jadwal->id_kendaraan)->update(['status' => 'tersedia']);
 

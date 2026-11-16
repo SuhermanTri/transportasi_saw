@@ -43,10 +43,27 @@ class ApprovalService
         $this->tandaiDriverTidakTersedia($permintaan, $kendala);
     }
 
-    /** Keterangan saat semua kendaraan (yang sesuai aturan ganjil-genap) sudah dibooking pada jam tersebut. */
+    /**
+     * Keterangan saat permintaan tidak mendapat kendaraan:
+     * kapasitas tidak cukup, atau semua kendaraan (sesuai aturan ganjil-genap) sudah dibooking.
+     */
     public function keteranganKendaraanPenuh(Permintaan $permintaan): string
     {
-        [, , , , $tipeGage] = $this->slotPermintaan($permintaan);
+        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage, $penumpang] = $this->slotPermintaan($permintaan);
+
+        if ($penumpang) {
+            // Tidak ada satu pun kendaraan berkapasitas cukup
+            if (! Kendaraan::where('kapasitas', '>=', $penumpang)->exists()) {
+                $maks = (int) Kendaraan::max('kapasitas');
+                return "tidak ada kendaraan berkapasitas {$penumpang} orang (kapasitas terbesar {$maks} orang)";
+            }
+            // Ada kendaraan kosong pada jam tersebut, tetapi kapasitasnya kurang
+            $tanpaFilterKapasitas = $this->schedule->kendaraanTersedia($tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai);
+            if ($tanpaFilterKapasitas->isNotEmpty()) {
+                return "kendaraan yang masih tersedia pada jam tersebut berkapasitas kurang dari {$penumpang} penumpang "
+                     . "(kapasitas terbesar {$tanpaFilterKapasitas->max('kapasitas')} orang)";
+            }
+        }
 
         return $tipeGage
             ? "semua kendaraan plat {$tipeGage} (aturan ganjil-genap) beserta driver-nya sudah dibooking pada jam tersebut"
@@ -71,25 +88,26 @@ class ApprovalService
      */
     public function kendalaDriver(Permintaan $permintaan): ?string
     {
-        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage] = $this->slotPermintaan($permintaan);
+        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage, $penumpang] = $this->slotPermintaan($permintaan);
 
         $tanpaCekDriver = $this->schedule->kendaraanTersedia(
-            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, [], false
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, [], false, $penumpang
         );
         if ($tanpaCekDriver->isEmpty()) {
             return null; // memang tidak ada kendaraan (bentrok jadwal / gage)
         }
 
         $denganCekDriver = $this->schedule->kendaraanTersedia(
-            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai
+            $tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, [], true, $penumpang
         );
         if ($denganCekDriver->isNotEmpty()) {
             return null; // ada kendaraan + driver, kendala lain (antrean prioritas)
         }
 
         return $tanpaCekDriver->load('driverUser')
-            ->map(fn($k) => ($k->driverUser?->nama ?? $k->nama_driver ?? 'Driver')
-                . ' (' . (self::LABEL_STATUS_DRIVER[$k->driverUser?->status_driver] ?? 'tidak tersedia') . ')')
+            ->map(fn($k) => $k->driverUser
+                ? $k->driverUser->nama . ' (' . (self::LABEL_STATUS_DRIVER[$k->driverUser->status_driver] ?? 'tidak tersedia') . ')'
+                : "kendaraan {$k->no_polisi} (belum ada driver)")
             ->unique()
             ->implode(', ');
     }
@@ -104,7 +122,7 @@ class ApprovalService
     {
         $tgl     = $permintaan->tanggal_berangkat->format('d M Y');
         $jam     = substr((string) ($permintaan->jam_berangkat ?? '08:00'), 0, 5);
-        $catatan = "Driver tidak tersedia untuk jadwal {$tgl} pukul {$jam}: {$keteranganDriver}. "
+        $catatan = "Driver/kendaraan tidak tersedia untuk jadwal {$tgl} pukul {$jam}: {$keteranganDriver}. "
                  . "Permintaan Anda tetap dalam antrean dan akan dijadwalkan otomatis begitu ada driver/kendaraan yang tersedia, "
                  . "atau Anda dapat melakukan reschedule maupun membatalkan permintaan ini.";
 
@@ -116,12 +134,12 @@ class ApprovalService
 
         Notifikasi::kirim(
             $permintaan->id_user,
-            "Driver untuk perjalanan Anda ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) tidak tersedia. Permintaan tetap dalam antrean — Anda dapat reschedule atau membatalkannya.",
+            "Driver/kendaraan untuk perjalanan Anda ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) tidak tersedia. Permintaan tetap dalam antrean — Anda dapat reschedule atau membatalkannya.",
             route('user.permintaan.show', $permintaan->id_permintaan)
         );
 
         Notifikasi::kirimKeDispatcher(
-            "Info otomatis: driver tidak tersedia untuk permintaan #{$permintaan->id_permintaan} ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) — {$keteranganDriver}. Pemohon sudah diberi tahu.",
+            "Info otomatis: driver/kendaraan tidak tersedia untuk permintaan #{$permintaan->id_permintaan} ke \"{$permintaan->tujuan}\" ({$tgl} {$jam}) — {$keteranganDriver}. Pemohon sudah diberi tahu.",
             route('admin.permintaan.show', $permintaan->id_permintaan)
         );
 
@@ -150,10 +168,9 @@ class ApprovalService
             ->where('status', 'aktif')
             ->where('status_perjalanan', 'aktif')
             ->whereDate('tanggal', '>=', $sekarang->toDateString())
+            // status_perjalanan 'aktif' = belum berangkat; yang sudah 'berjalan' tidak dilepas
             ->whereHas('kendaraan', fn($q) => $q->where('driver_user_id', $driver->id_user))
-            ->get()
-            // hanya perjalanan yang belum dimulai
-            ->filter(fn($j) => Carbon::parse($j->tanggal->format('Y-m-d') . ' ' . $j->jam_mulai, self::ZONA_WAKTU)->gt($sekarang));
+            ->get();
 
         $terdampak = [];
         foreach ($jadwalList as $j) {
@@ -206,6 +223,102 @@ class ApprovalService
         $this->prosesAntrian();
     }
 
+    /* ════════════════════════════════════════════════════════════
+     | Pengalihan kendaraan oleh Dispatcher (prioritas lebih tinggi)
+     ═══════════════════════════════════════════════════════════ */
+
+    /**
+     * Alihkan kendaraan dari jadwal $target (prioritas lebih rendah, belum berangkat)
+     * ke permintaan $sumber (prioritas lebih tinggi, belum mendapat kendaraan).
+     *
+     * Jadwal target dilepas → permintaan target kembali 'disetujui' dengan feedback 'dioverride',
+     * lalu antrean diproses: $sumber didahulukan karena prioritasnya lebih tinggi,
+     * dan booking yang dialihkan ikut kembali ke antrean.
+     *
+     * @return string|null  pesan error bila tidak memenuhi syarat; null bila berhasil
+     */
+    public function alihkanKendaraan(Permintaan $sumber, Jadwal $target, int $aktorId): ?string
+    {
+        $target->loadMissing(['permintaan', 'kendaraan.driverUser']);
+        $pTarget   = $target->permintaan;
+        $kendaraan = $target->kendaraan;
+
+        if (! in_array($sumber->status, ['menunggu_konfirmasi', 'disetujui'])
+            || $sumber->jadwal()->where('status', 'aktif')->exists()) {
+            return 'Permintaan ini sudah mendapat kendaraan atau tidak sedang menunggu kendaraan.';
+        }
+        if (! $pTarget || $target->status !== 'aktif') {
+            return 'Jadwal yang dipilih tidak aktif.';
+        }
+        if (! $target->belumBerangkat()) {
+            return Jadwal::PESAN_SUDAH_BERANGKAT;
+        }
+        if ($sumber->urutanPriority() >= $pTarget->urutanPriority()) {
+            return 'Kendaraan hanya dapat dialihkan dari booking berprioritas lebih rendah.';
+        }
+
+        // Pastikan kendaraan target memang bisa dipakai permintaan sumber
+        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, , $penumpang] = $this->slotPermintaan($sumber);
+        if (! $kendaraan?->driverUser || $kendaraan->driverUser->status_driver !== 'tersedia') {
+            return "Kendaraan {$kendaraan?->no_polisi} tidak memiliki driver yang tersedia.";
+        }
+        if ($penumpang && $kendaraan->kapasitas < $penumpang) {
+            return "Kapasitas kendaraan {$kendaraan->no_polisi} ({$kendaraan->kapasitas} orang) kurang dari jumlah penumpang ({$penumpang} orang).";
+        }
+        if (! $this->gage->sesuai($kendaraan, $sumber->tanggal_berangkat, $jamMulai, $jamSelesai)) {
+            return "Kendaraan {$kendaraan->no_polisi} tidak sesuai aturan ganjil-genap untuk jadwal permintaan ini.";
+        }
+        if (! $this->schedule->tersedia($kendaraan->id_kendaraan, $tanggal, $jamMulai, $jamSelesai, $target->id_jadwal, $tanggalSelesai)
+            || $this->schedule->kendaraanTerkunci()->has($kendaraan->id_kendaraan)) {
+            return "Kendaraan {$kendaraan->no_polisi} masih bentrok dengan jadwal lain pada jam tersebut.";
+        }
+
+        // ── Lepas jadwal target ─────────────────────────────────────
+        $labelSumber = ucfirst($sumber->priority ?? 'normal');
+        $catatan     = "Kendaraan {$kendaraan->no_polisi} dialihkan oleh Dispatcher ke permintaan berprioritas lebih tinggi ({$labelSumber}). "
+                     . "Permintaan Anda kembali ke antrean dan akan dijadwalkan otomatis bila ada kendaraan lain, "
+                     . "atau Anda dapat melakukan reschedule maupun membatalkannya.";
+
+        if ($kendaraan->driverUser->jumlah_perjalanan > 0) {
+            $kendaraan->driverUser->decrement('jumlah_perjalanan');
+        }
+        $kendaraan->update(['status' => 'tersedia']);
+        $target->delete();
+
+        $pTarget->update([
+            'status'             => 'disetujui',
+            'feedback_type'      => 'dioverride',
+            'catatan_dispatcher' => $catatan,
+        ]);
+
+        Notifikasi::kirim(
+            $pTarget->id_user,
+            "Kendaraan untuk perjalanan Anda ke \"{$pTarget->tujuan}\" dialihkan ke permintaan berprioritas lebih tinggi. Permintaan Anda kembali ke antrean.",
+            route('user.permintaan.show', $pTarget->id_permintaan)
+        );
+
+        PermintaanLog::catat(
+            idPermintaan: $pTarget->id_permintaan,
+            userId:       $aktorId,
+            tipe:         'kendaraan_dialihkan',
+            keterangan:   "Kendaraan {$kendaraan->no_polisi} dialihkan ke permintaan #{$sumber->id_permintaan} ({$labelSumber})",
+            dataLama:     ['id_kendaraan' => $kendaraan->id_kendaraan, 'status' => 'terjadwal'],
+            dataBaru:     ['status' => 'disetujui'],
+        );
+        PermintaanLog::catat(
+            idPermintaan: $sumber->id_permintaan,
+            userId:       $aktorId,
+            tipe:         'kendaraan_dialihkan',
+            keterangan:   "Menerima kendaraan {$kendaraan->no_polisi} dari permintaan #{$pTarget->id_permintaan} (" . ucfirst($pTarget->priority ?? 'normal') . ')',
+        );
+
+        // Sumber didahulukan (prioritas lebih tinggi); booking yang dialihkan kembali ke antrean
+        $sumber->update(['status' => 'disetujui']);
+        $this->prosesAntrian();
+
+        return null;
+    }
+
     /**
      * Coba jadwalkan permintaan secara otomatis.
      * Dipanggil dari setujui() dan setelah reschedule oleh user.
@@ -244,12 +357,16 @@ class ApprovalService
         // Pastikan ranking SAW terbaru sebelum alokasi
         try { $this->saw->hitung(); } catch (\Throwable) {}
 
+        // Permintaan 'terjadwal' / 'berjalan' tidak pernah dialokasikan ulang
         $kandidat = Permintaan::with('hasilSaw')
             ->whereIn('status', ['menunggu', 'disetujui', 'menunggu_konfirmasi'])
             ->whereDate('tanggal_berangkat', '>=', today())
             ->whereDoesntHave('jadwal', fn($q) => $q->where('status', 'aktif'))
             ->get()
+            // Urutan: prioritas dispatcher (urgent → high → normal) → ranking SAW → id.
+            // Nilai & ranking SAW tidak diubah; prioritas hanya menentukan siapa dilayani lebih dulu.
             ->sortBy([
+                fn($a, $b) => $a->urutanPriority() <=> $b->urutanPriority(),
                 fn($a, $b) => ($a->hasilSaw?->ranking ?? PHP_INT_MAX) <=> ($b->hasilSaw?->ranking ?? PHP_INT_MAX),
                 fn($a, $b) => $a->id_permintaan <=> $b->id_permintaan,
             ]);
@@ -258,10 +375,10 @@ class ApprovalService
         $dijadwalkan = [];
 
         foreach ($kandidat as $p) {
-            [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage] = $this->slotPermintaan($p);
+            [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage, $penumpang] = $this->slotPermintaan($p);
 
             $kendaraan = $this->schedule
-                ->kendaraanTersedia($tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, $reservasi)
+                ->kendaraanTersedia($tanggal, $jamMulai, $jamSelesai, $tipeGage, $tanggalSelesai, $reservasi, true, $penumpang)
                 ->first();
 
             if (! $kendaraan) {
@@ -292,7 +409,7 @@ class ApprovalService
      */
     public function tanggalTersediaBerikutnya(Permintaan $permintaan, int $maksHari = 7): ?string
     {
-        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai] = $this->slotPermintaan($permintaan);
+        [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, , $penumpang] = $this->slotPermintaan($permintaan);
 
         $durasiHari = (int) Carbon::parse($tanggal)->diffInDays(Carbon::parse($tanggalSelesai ?? $tanggal));
         $dasar      = Carbon::parse($tanggal)->max(today()->subDay());
@@ -303,7 +420,7 @@ class ApprovalService
             $tipeGage = $gageAktif ? $this->gage->tipeUntukTanggal($tgl) : null;
             $tglAkhir = $tanggalSelesai ? $tgl->copy()->addDays($durasiHari)->format('Y-m-d') : null;
 
-            if ($this->schedule->kendaraanTersedia($tgl->format('Y-m-d'), $jamMulai, $jamSelesai, $tipeGage, $tglAkhir)->isNotEmpty()) {
+            if ($this->schedule->kendaraanTersedia($tgl->format('Y-m-d'), $jamMulai, $jamSelesai, $tipeGage, $tglAkhir, [], true, $penumpang)->isNotEmpty()) {
                 return $tgl->format('Y-m-d');
             }
         }
@@ -311,7 +428,154 @@ class ApprovalService
         return null;
     }
 
-    /** [tanggal, jamMulai, jamSelesai, tanggalSelesai|null, tipeGage|null] untuk permintaan. */
+    /* ════════════════════════════════════════════════════════════
+     | Saran jadwal alternatif saat kendaraan penuh
+     ═══════════════════════════════════════════════════════════ */
+
+    /** Jam kerja kendaraan untuk saran jam alternatif. */
+    public const JAM_KERJA_MULAI   = '06:00';
+    public const JAM_KERJA_SELESAI = '21:00';
+
+    /**
+     * Apakah masih ada kendaraan (ber-driver, kapasitas cukup, sesuai gage, tidak bentrok/terkunci)
+     * untuk slot ini? Aturannya sama persis dengan alokasi otomatis.
+     */
+    public function adaKendaraan(string $tanggal, string $jamMulai, ?string $jamKembali, ?int $penumpang): bool
+    {
+        $jamSelesai = $jamKembali ?: '17:00';
+        $tipeGage   = $this->gage->isGageAktif($jamMulai, $jamSelesai) ? $this->gage->tipeUntukTanggal($tanggal) : null;
+
+        return $this->schedule
+            ->kendaraanTersedia($tanggal, $jamMulai, $jamSelesai, $tipeGage, null, [], true, $penumpang)
+            ->isNotEmpty();
+    }
+
+    /**
+     * Saran jadwal yang masih ada kendaraannya.
+     * Untuk setiap tanggal kandidat (urut): jam yang sama dulu, lalu jam digeser per 1 jam
+     * (+1, −1, +2, −2, …) selama masih dalam jam kerja 06:00–21:00. Jam yang sudah lewat (WIB) dilewati.
+     *
+     * @param  string[] $tanggalKandidat  'Y-m-d', sudah sesuai jendela pengajuan pemanggil
+     * @param  bool     $lewatiSlotAsal   true = slot asal (tanggal & jam sama) tidak disarankan (diketahui penuh)
+     * @return array<int, array{tanggal:string, jam_berangkat:string, jam_kembali:?string, label:string}>
+     */
+    public function saranJadwal(
+        string $tanggalAsal,
+        string $jamMulai,
+        ?string $jamKembali,
+        ?int $penumpang,
+        array $tanggalKandidat,
+        bool $lewatiSlotAsal = true,
+        int $maks = 4
+    ): array {
+        $jamMulai   = substr($jamMulai, 0, 5);
+        $jamKembali = $jamKembali ? substr($jamKembali, 0, 5) : null;
+        $sekarang   = now(self::ZONA_WAKTU);
+
+        $mulaiMenit  = $this->keMenit($jamMulai);
+        $durasiMenit = $jamKembali && $this->keMenit($jamKembali) > $mulaiMenit ? $this->keMenit($jamKembali) - $mulaiMenit : 60;
+        $batasAwal   = $this->keMenit(self::JAM_KERJA_MULAI);
+        $batasAkhir  = $this->keMenit(self::JAM_KERJA_SELESAI);
+
+        // Urutan geser: 0, +1, −1, +2, −2, … jam
+        $geser = [0];
+        for ($i = 1; $i <= 15; $i++) { $geser[] = $i * 60; $geser[] = -$i * 60; }
+
+        // Kuota per tanggal: tanggal pertama mendapat sisa kuota, tanggal lain masing-masing 1
+        // (agar selalu ada saran "jam lain hari yang sama" sekaligus "tanggal terdekat").
+        $tanggalKandidat = array_values(array_unique($tanggalKandidat));
+        $kuotaLain       = max(0, count($tanggalKandidat) - 1);
+
+        $saran = [];
+        foreach ($tanggalKandidat as $idx => $tanggal) {
+            $kuota = $idx === 0 ? max(1, $maks - $kuotaLain) : 1;
+            $dapat = 0;
+            foreach ($geser as $g) {
+                if ($dapat >= $kuota || count($saran) >= $maks) {
+                    break;
+                }
+                $m = $mulaiMenit + $g;
+                if ($m < $batasAwal || $m + $durasiMenit > $batasAkhir) {
+                    continue;
+                }
+                if ($lewatiSlotAsal && $g === 0 && $tanggal === $tanggalAsal) {
+                    continue;
+                }
+
+                $jb = $this->dariMenit($m);
+                $jk = $jamKembali ? $this->dariMenit($m + $durasiMenit) : null;
+
+                // Lewati jam yang sudah lewat untuk hari ini
+                if (Carbon::parse("{$tanggal} {$jb}", self::ZONA_WAKTU)->lte($sekarang)) {
+                    continue;
+                }
+                if (! $this->adaKendaraan($tanggal, $jb, $jk, $penumpang)) {
+                    continue;
+                }
+
+                $saran[] = [
+                    'tanggal'       => $tanggal,
+                    'jam_berangkat' => $jb,
+                    'jam_kembali'   => $jk,
+                    'label'         => $this->labelSlot($tanggal, $jb, $jk),
+                ];
+                $dapat++;
+            }
+        }
+
+        // Tampilkan urut tanggal lalu jam
+        usort($saran, fn($a, $b) => [$a['tanggal'], $a['jam_berangkat']] <=> [$b['tanggal'], $b['jam_berangkat']]);
+        return $saran;
+    }
+
+    /** Saran untuk dispatcher (alasan "Kendaraan penuh"): jam lain di tanggal yang sama + tanggal terdekat. */
+    public function saranUntukDispatcher(Permintaan $p): array
+    {
+        $tanggal   = $p->tanggal_berangkat->format('Y-m-d');
+        $kandidat  = [$tanggal];
+        $berikut   = $this->tanggalTersediaBerikutnya($p);
+        if ($berikut) {
+            $kandidat[] = $berikut;
+        }
+
+        $saran = $this->saranJadwal(
+            $tanggal, (string) ($p->jam_berangkat ?? '08:00'), $p->jam_kembali,
+            $p->jumlah_penumpang ? (int) $p->jumlah_penumpang : null, $kandidat
+        );
+
+        $teks = $saran
+            ? 'Saran jadwal yang masih tersedia: ' . implode('; ', array_column($saran, 'label')) . '.'
+            : 'Belum ada jadwal alternatif yang tersedia dalam 7 hari ke depan.';
+
+        return ['saran' => $saran, 'teks' => $teks, 'tanggal_berikutnya' => $berikut];
+    }
+
+    /** "Hari ini 13:00–14:00" / "17 Nov 2026 13:00–14:00". */
+    public function labelSlot(string $tanggal, string $jamBerangkat, ?string $jamKembali): string
+    {
+        $hariIni = now(self::ZONA_WAKTU)->format('Y-m-d');
+        $besok   = now(self::ZONA_WAKTU)->addDay()->format('Y-m-d');
+        $tgl     = match ($tanggal) {
+            $hariIni => 'Hari ini',
+            $besok   => 'Besok (' . Carbon::parse($tanggal)->format('d M') . ')',
+            default  => Carbon::parse($tanggal)->format('d M Y'),
+        };
+
+        return $tgl . ' ' . $jamBerangkat . ($jamKembali ? '–' . $jamKembali : '');
+    }
+
+    private function keMenit(string $jam): int
+    {
+        [$h, $m] = array_map('intval', explode(':', substr($jam, 0, 5)));
+        return $h * 60 + $m;
+    }
+
+    private function dariMenit(int $menit): string
+    {
+        return sprintf('%02d:%02d', intdiv($menit, 60), $menit % 60);
+    }
+
+    /** [tanggal, jamMulai, jamSelesai, tanggalSelesai|null, tipeGage|null, jumlahPenumpang|null] untuk permintaan. */
     private function slotPermintaan(Permintaan $p): array
     {
         $tanggal        = $p->tanggal_berangkat->format('Y-m-d');
@@ -322,7 +586,9 @@ class ApprovalService
         $gageAktif = $this->gage->isGageAktif($jamMulai, $jamSelesai);
         $tipeGage  = $gageAktif ? $this->gage->tipeUntukTanggal($p->tanggal_berangkat) : null;
 
-        return [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage];
+        $jumlahPenumpang = $p->jumlah_penumpang ? (int) $p->jumlah_penumpang : null;
+
+        return [$tanggal, $jamMulai, $jamSelesai, $tanggalSelesai, $tipeGage, $jumlahPenumpang];
     }
 
     /** Buat jadwal untuk permintaan + kirim notifikasi ke driver dan pemohon. */
@@ -406,13 +672,14 @@ class ApprovalService
     {
         $teks = match ($status) {
             'disetujui'           => "Permintaan perjalanan Anda ke {$permintaan->tujuan} telah disetujui.",
-            'menunggu_konfirmasi' => "Permintaan perjalanan Anda ke {$permintaan->tujuan} disetujui namun belum ada kendaraan tersedia. Dispatcher akan menghubungi Anda.",
+            'menunggu_konfirmasi' => "Permintaan perjalanan Anda ke {$permintaan->tujuan} disetujui namun belum ada kendaraan tersedia. Lihat saran jadwal alternatif di detail permintaan.",
             'ditolak'             => "Permintaan perjalanan Anda ke {$permintaan->tujuan} ditolak." . ($pesan ? " Alasan: {$pesan}" : ''),
             'dijadwalkan_ulang'   => "Jadwal perjalanan Anda ke {$permintaan->tujuan} diubah oleh Dispatcher." . ($pesan ? " Keterangan: {$pesan}" : ''),
             'terjadwal'           => "Permintaan perjalanan Anda ke {$permintaan->tujuan} telah dijadwalkan.",
             default               => "Status permintaan Anda diperbarui menjadi {$status}.",
         };
 
-        Notifikasi::kirim($permintaan->id_user, $teks);
+        // Semua notifikasi status dapat diklik ke detail permintaan
+        Notifikasi::kirim($permintaan->id_user, $teks, route('user.permintaan.show', $permintaan->id_permintaan));
     }
 }
