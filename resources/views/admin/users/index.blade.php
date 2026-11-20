@@ -194,9 +194,7 @@
                         {{-- Nama cell --}}
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <div class="u-avatar u-avatar-{{ $role }}">
-                                    {{ strtoupper(substr($u->nama, 0, 1)) }}
-                                </div>
+                                @include('partials.avatar', ['user' => $u, 'size' => 34])
                                 <div class="lh-sm">
                                     <div class="fw-semibold">{{ $u->nama }}</div>
                                     @if($role === 'driver')

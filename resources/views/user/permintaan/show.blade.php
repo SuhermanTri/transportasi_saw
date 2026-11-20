@@ -147,7 +147,21 @@
                 </div>
                 <div class="col-md-4">
                     <div class="text-muted small">Driver</div>
-                    <div class="fw-semibold">{{ $jadwal->kendaraan->nama_driver ?? '-' }}</div>
+                    @php $driverUser = $jadwal->kendaraan?->driverUser; @endphp
+                    <div class="d-flex align-items-center gap-2">
+                        @if($driverUser)
+                            @include('partials.avatar', ['user' => $driverUser, 'size' => 40])
+                        @endif
+                        <div class="lh-sm">
+                            <div class="fw-semibold">{{ $driverUser?->nama ?? $jadwal->kendaraan->nama_driver ?? '-' }}</div>
+                            @php $hpDriver = $driverUser?->no_hp ?: $jadwal->kendaraan?->no_hp_driver; @endphp
+                            @if($hpDriver)
+                                <a href="tel:{{ preg_replace('/[^0-9+]/', '', $hpDriver) }}" class="small text-decoration-none">
+                                    <i class="bi bi-telephone me-1"></i>{{ $hpDriver }}
+                                </a>
+                            @endif
+                        </div>
+                    </div>
                 </div>
                 <div class="col-md-4">
                     <div class="text-muted small">Jam</div>

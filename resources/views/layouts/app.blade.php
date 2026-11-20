@@ -169,10 +169,17 @@
         @endif
     </ul>
     <div class="p-3 border-top border-white border-opacity-10 mt-auto">
-        <div class="text-white-50 small mb-1">
-            <i class="bi bi-person-circle me-1"></i>{{ auth()->user()->nama }}
+        <div class="d-flex align-items-center gap-2 mb-2">
+            @include('partials.avatar', ['user' => auth()->user(), 'size' => 36])
+            <div class="lh-sm overflow-hidden">
+                <div class="text-white small fw-semibold text-truncate">{{ auth()->user()->nama }}</div>
+                <div class="text-white-50 small text-truncate">{{ auth()->user()->jabatan }}</div>
+            </div>
         </div>
-        <div class="text-white-50 small mb-2">{{ auth()->user()->jabatan }}</div>
+        <a href="{{ route('profil.index') }}"
+           class="btn btn-sm w-100 mb-2 {{ request()->routeIs('profil.*') ? 'btn-light' : 'btn-outline-light' }}">
+            <i class="bi bi-person-gear me-1"></i>Profil Saya
+        </a>
         <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button class="btn btn-outline-light btn-sm w-100">
@@ -198,7 +205,10 @@
                 </span>
             </a>
             @endauth
-            <span class="badge bg-primary">{{ auth()->user()->role->nama_role ?? '-' }}</span>
+            <a href="{{ route('profil.index') }}" class="d-flex align-items-center gap-2 text-decoration-none" title="Profil Saya">
+                @include('partials.avatar', ['user' => auth()->user(), 'size' => 28])
+                <span class="badge bg-primary">{{ auth()->user()->role->nama_role ?? '-' }}</span>
+            </a>
             <span class="text-muted small">{{ now()->format('d M Y') }}</span>
         </div>
     </div>

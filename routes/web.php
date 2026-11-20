@@ -23,6 +23,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifikasi/read-all',  [NotifikasiController::class, 'markAllRead'])->name('notifikasi.read-all');
     Route::get( '/notifikasi/{id}/goto', [NotifikasiController::class, 'goto'])->name('notifikasi.goto');
     Route::post('/notifikasi/{id}/read', [NotifikasiController::class, 'markRead'])->name('notifikasi.read');
+
+    // Profil Saya (semua peran)
+    Route::get('/profil',          [\App\Http\Controllers\ProfilController::class, 'index'])->name('profil.index');
+    Route::put('/profil',          [\App\Http\Controllers\ProfilController::class, 'update'])->name('profil.update');
+    Route::put('/profil/password', [\App\Http\Controllers\ProfilController::class, 'updatePassword'])->name('profil.password');
 });
 
 // ─── ADMIN / DISPATCHER ────────────────────────────────────────────

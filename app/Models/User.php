@@ -17,7 +17,33 @@ class User extends Authenticatable
         'nama', 'username', 'password', 'id_role', 'jabatan',
         'status_driver', 'jumlah_perjalanan',
         'merit_point', 'last_trip_at',
+        'foto_profil', 'no_hp',
     ];
+
+    /* ── Profil helpers ──────────────────────────────────────── */
+
+    /**
+     * URL foto profil (disk 'public') atau null bila belum ada.
+     * Dibuat relatif ("/storage/...") agar tetap benar walau APP_URL berbeda
+     * dengan domain yang dipakai (mis. transportasi_saw.test).
+     */
+    public function getFotoUrlAttribute(): ?string
+    {
+        if (! $this->foto_profil || ! \Illuminate\Support\Facades\Storage::disk('public')->exists($this->foto_profil)) {
+            return null;
+        }
+
+        return parse_url(\Illuminate\Support\Facades\Storage::disk('public')->url($this->foto_profil), PHP_URL_PATH);
+    }
+
+    /** Inisial nama, maksimal 2 huruf (mis. "Budi Santoso" → "BS"). */
+    public function getInisialAttribute(): string
+    {
+        $kata = preg_split('/\s+/', trim((string) $this->nama), -1, PREG_SPLIT_NO_EMPTY);
+        $inisial = collect($kata)->take(2)->map(fn($k) => mb_strtoupper(mb_substr($k, 0, 1)))->implode('');
+
+        return $inisial !== '' ? $inisial : '?';
+    }
 
     protected $hidden = ['password'];
 

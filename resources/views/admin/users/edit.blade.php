@@ -19,7 +19,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('admin.users.update', $user->id_user) }}">
+        <form method="POST" action="{{ route('admin.users.update', $user->id_user) }}" enctype="multipart/form-data">
             @csrf @method('PUT')
             <div class="row g-3">
 
@@ -77,6 +77,32 @@
                            value="{{ old('jabatan', $user->jabatan) }}"
                            placeholder="Contoh: Staff, Supervisor, Manager">
                     @error('jabatan')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+
+                {{-- Foto & kontak --}}
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Foto Profil</label>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        @include('partials.avatar', ['user' => $user, 'size' => 48])
+                        <span class="text-muted small">{{ $user->foto_url ? 'Foto saat ini' : 'Belum ada foto' }}</span>
+                    </div>
+                    <input type="file" name="foto" accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                           class="form-control @error('foto') is-invalid @enderror">
+                    @error('foto')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-text">JPG/JPEG/PNG, maksimal 2 MB. Kosongkan jika tidak diganti.</div>
+                    @if($user->foto_url)
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" name="hapus_foto" value="1" id="hapusFoto">
+                        <label class="form-check-label" for="hapusFoto">Hapus foto</label>
+                    </div>
+                    @endif
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">No. HP</label>
+                    <input type="text" name="no_hp" maxlength="20" class="form-control @error('no_hp') is-invalid @enderror"
+                           value="{{ old('no_hp', $user->no_hp) }}" placeholder="cth: 0812-3456-7890">
+                    @error('no_hp')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-text">Untuk driver, nomor ini juga dipakai di data kendaraan.</div>
                 </div>
 
                 {{-- Info kendaraan jika driver --}}

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Kendaraan;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ProfilService;
 use App\Services\SawService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -64,21 +65,26 @@ class UserController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'id_role'  => 'required|exists:roles,id_role',
             'jabatan'  => 'nullable|string|max:50',
-        ], [
+        ] + ProfilService::ATURAN, [
             'username.unique'       => 'Username sudah digunakan.',
             'password.min'          => 'Password minimal 6 karakter.',
             'password.confirmed'    => 'Konfirmasi password tidak cocok.',
-        ]);
+        ] + ProfilService::PESAN);
+
+        $profil = app(ProfilService::class);
 
         $user = User::create([
-            'nama'     => $request->nama,
-            'username' => $request->username,
-            'password' => Hash::make($request->password),
-            'id_role'  => $request->id_role,
-            'jabatan'  => $request->jabatan,
+            'nama'        => $request->nama,
+            'username'    => $request->username,
+            'password'    => Hash::make($request->password),
+            'id_role'     => $request->id_role,
+            'jabatan'     => $request->jabatan,
+            'no_hp'       => $request->filled('no_hp') ? trim($request->no_hp) : null,
+            'foto_profil' => $profil->prosesFoto(null, $request->file('foto'), false),
         ]);
 
         $this->hubungkanKendaraanDriver($user);
+        $profil->sinkronNoHpDriver($user);
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User berhasil ditambahkan.');
@@ -101,17 +107,21 @@ class UserController extends Controller
             'password' => 'nullable|string|min:6|confirmed',
             'id_role'  => 'required|exists:roles,id_role',
             'jabatan'  => 'nullable|string|max:50',
-        ], [
+        ] + ProfilService::ATURAN, [
             'username.unique'    => 'Username sudah digunakan.',
             'password.min'       => 'Password minimal 6 karakter.',
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
-        ]);
+        ] + ProfilService::PESAN);
+
+        $profil = app(ProfilService::class);
 
         $data = [
             'nama'    => $request->nama,
             'username'=> $request->username,
             'id_role' => $request->id_role,
             'jabatan' => $request->jabatan,
+            'no_hp'   => $request->filled('no_hp') ? trim($request->no_hp) : null,
+            'foto_profil' => $profil->prosesFoto($user->foto_profil, $request->file('foto'), $request->boolean('hapus_foto')),
         ];
 
         if ($request->filled('password')) {
@@ -127,6 +137,7 @@ class UserController extends Controller
         }
 
         $this->hubungkanKendaraanDriver($user);
+        $profil->sinkronNoHpDriver($user);
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User berhasil diperbarui.');
@@ -164,7 +175,11 @@ class UserController extends Controller
                 ->with('error', 'Tidak dapat menghapus akun yang sedang digunakan.');
         }
 
+        $foto = $user->foto_profil;
         $user->delete();
+
+        // Hapus file foto dari storage setelah data user terhapus
+        app(ProfilService::class)->hapusFile($foto);
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User berhasil dihapus.');

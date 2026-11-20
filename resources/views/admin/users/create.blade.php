@@ -19,7 +19,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('admin.users.store') }}">
+        <form method="POST" action="{{ route('admin.users.store') }}" enctype="multipart/form-data">
             @csrf
             <div class="row g-3">
 
@@ -69,6 +69,22 @@
                            value="{{ old('jabatan') }}" placeholder="Contoh: Staff, Supervisor, Manager">
                     @error('jabatan')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     <div class="form-text">Untuk role <strong>driver</strong>, jabatan bisa dikosongkan.</div>
+                </div>
+
+                {{-- Foto & kontak --}}
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Foto Profil</label>
+                    <input type="file" name="foto" accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                           class="form-control @error('foto') is-invalid @enderror">
+                    @error('foto')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-text">JPG/JPEG/PNG, maksimal 2 MB.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">No. HP</label>
+                    <input type="text" name="no_hp" maxlength="20" class="form-control @error('no_hp') is-invalid @enderror"
+                           value="{{ old('no_hp') }}" placeholder="cth: 0812-3456-7890">
+                    @error('no_hp')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-text">Untuk driver, nomor ini juga dipakai di data kendaraan.</div>
                 </div>
 
             </div>

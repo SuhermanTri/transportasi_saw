@@ -124,6 +124,13 @@
                 <span class="badge bg-{{ $statusColor }}">{{ $statusLabels[auth()->user()->status_driver] ?? '-' }}</span>
             </div>
             <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    @include('partials.avatar', ['user' => auth()->user(), 'size' => 48])
+                    <div class="lh-sm">
+                        <div class="fw-semibold">{{ auth()->user()->nama }}</div>
+                        <div class="text-muted small">{{ auth()->user()->no_hp ?: 'No. HP belum diisi' }}</div>
+                    </div>
+                </div>
                 <form method="POST" action="{{ route('driver.status.update') }}" class="d-flex gap-2">
                     @csrf
                     <select name="status_driver" class="form-select form-select-sm">
